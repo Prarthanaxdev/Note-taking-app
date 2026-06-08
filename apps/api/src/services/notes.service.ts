@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { z } from 'zod';
-import type { NoteDetail } from 'shared';
-import { CreateNoteSchema, UpdateNoteSchema } from 'shared';
+import type { NoteDetail, NoteListItem, PaginationMeta } from 'shared';
+import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema } from 'shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 
@@ -12,6 +12,12 @@ const NOTE_INCLUDE = {
 } as const;
 
 type NoteWithRelations = Prisma.NoteGetPayload<{ include: typeof NOTE_INCLUDE }>;
+
+const LIST_INCLUDE = {
+  tags: { include: { tag: true } },
+} as const;
+
+type NoteListRow = Prisma.NoteGetPayload<{ include: typeof LIST_INCLUDE }>;
 
 function extractText(node: unknown): string {
   if (!node || typeof node !== 'object') return '';
@@ -149,4 +155,51 @@ export async function softDelete(userId: string, noteId: string): Promise<void> 
   });
   if (!note) throw new AppError('NOT_FOUND', 'Note not found.', 404);
   await prisma.note.update({ where: { id: noteId }, data: { deletedAt: new Date() } });
+}
+
+export async function list(
+  userId: string,
+  query: z.infer<typeof NoteListQuerySchema>,
+): Promise<{ data: NoteListItem[]; meta: PaginationMeta }> {
+  const { page, limit, sortBy, sortOrder, tags } = query;
+
+  const tagIds = tags ? tags.split(',').filter(Boolean) : [];
+
+  if (tagIds.length > 0) {
+    const owned = await prisma.tag.findMany({ where: { id: { in: tagIds }, userId } });
+    if (owned.length !== tagIds.length)
+      throw new AppError('INVALID_TAG', 'One or more specified tags are invalid.', 400);
+  }
+
+  const where: Prisma.NoteWhereInput = {
+    userId,
+    deletedAt: null,
+    ...(tagIds.length > 0 && {
+      AND: tagIds.map(id => ({ tags: { some: { tagId: id } } })),
+    }),
+  };
+
+  const [total, notes] = (await prisma.$transaction([
+    prisma.note.count({ where }),
+    prisma.note.findMany({
+      where,
+      orderBy: { [sortBy]: sortOrder } as Prisma.NoteOrderByWithRelationInput,
+      skip: (page - 1) * limit,
+      take: limit,
+      include: LIST_INCLUDE,
+    }),
+  ])) as [number, NoteListRow[]];
+
+  const data: NoteListItem[] = notes.map(note => ({
+    id: note.id,
+    title: note.title,
+    contentPreview: (note.contentText ?? '').slice(0, 150),
+    tags: note.tags.map(nt => ({ id: nt.tag.id, name: nt.tag.name, color: nt.tag.color })),
+    updatedAt: note.updatedAt.toISOString(),
+  }));
+
+  return {
+    data,
+    meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
 }

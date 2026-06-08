@@ -1,10 +1,25 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { CreateNoteSchema, UpdateNoteSchema } from 'shared';
+import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema } from 'shared';
 import * as notesService from '../services/notes.service.js';
 
 export const notesRouter: IRouter = Router();
+
+notesRouter.get(
+  '/',
+  authenticate,
+  validate(NoteListQuerySchema, 'query'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const query = req.query as unknown as Parameters<typeof notesService.list>[1];
+      const result = await notesService.list(req.user.id, query);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 notesRouter.post(
   '/',

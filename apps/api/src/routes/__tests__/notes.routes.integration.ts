@@ -37,6 +37,17 @@ async function createNote(
   return res.body.id as string;
 }
 
+async function createTag(
+  token: string,
+  body: Record<string, unknown> = { name: 'test-tag' },
+): Promise<string> {
+  const res = await request(app)
+    .post('/api/v1/tags')
+    .set('Authorization', `Bearer ${token}`)
+    .send(body);
+  return res.body.id as string;
+}
+
 // ── POST /api/v1/notes ────────────────────────────────────────────────────────
 
 describe.skipIf(!DB_AVAILABLE)('POST /api/v1/notes', () => {
@@ -354,5 +365,202 @@ describe.skipIf(!DB_AVAILABLE)('DELETE /api/v1/notes/:id', () => {
       .set('Authorization', `Bearer ${accessToken}`);
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ── GET /api/v1/notes ─────────────────────────────────────────────────────────
+
+describe.skipIf(!DB_AVAILABLE)('GET /api/v1/notes', () => {
+  it('LIST-IT-01: no auth header → 401', async () => {
+    const res = await request(app).get(NOTES_BASE);
+    expect(res.status).toBe(401);
+  });
+
+  it('LIST-IT-02: auth, no notes → 200 with empty data and zero meta', async () => {
+    const { accessToken } = await registerUser();
+    const res = await request(app)
+      .get(NOTES_BASE)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.meta).toMatchObject({ total: 0, page: 1, limit: 20, totalPages: 0 });
+  });
+
+  it('LIST-IT-03: one note → 200 with correct NoteListItem shape', async () => {
+    const { accessToken } = await registerUser();
+    const noteId = await createNote(accessToken, { title: 'Hello' });
+
+    const res = await request(app)
+      .get(NOTES_BASE)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({
+      id: noteId,
+      title: 'Hello',
+      contentPreview: expect.any(String),
+      tags: [],
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it('LIST-IT-04: note with long content → contentPreview truncated to 150 chars', async () => {
+    const { accessToken } = await registerUser();
+    const longText = 'a'.repeat(200);
+    const content = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: longText }] }] };
+    await createNote(accessToken, { title: 'Long', content });
+
+    const res = await request(app)
+      .get(NOTES_BASE)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].contentPreview).toHaveLength(150);
+  });
+
+  it('LIST-IT-05: two users — each sees only own notes', async () => {
+    const { accessToken: aliceToken } = await registerUser(VALID_USER);
+    const { accessToken: bobToken } = await registerUser(OTHER_USER);
+    await createNote(aliceToken, { title: 'Alice Note' });
+    await createNote(bobToken, { title: 'Bob Note' });
+
+    const aliceRes = await request(app).get(NOTES_BASE).set('Authorization', `Bearer ${aliceToken}`);
+    const bobRes = await request(app).get(NOTES_BASE).set('Authorization', `Bearer ${bobToken}`);
+
+    expect(aliceRes.body.data).toHaveLength(1);
+    expect(aliceRes.body.data[0].title).toBe('Alice Note');
+    expect(bobRes.body.data).toHaveLength(1);
+    expect(bobRes.body.data[0].title).toBe('Bob Note');
+  });
+
+  it('LIST-IT-06: limit=1 with 2 notes → meta.total=2, meta.totalPages=2, data.length=1', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'Note 1' });
+    await createNote(accessToken, { title: 'Note 2' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}?limit=1`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.meta).toMatchObject({ total: 2, totalPages: 2, limit: 1 });
+  });
+
+  it('LIST-IT-07: page=2&limit=1 with 2 notes → returns second note (older)', async () => {
+    const { accessToken } = await registerUser();
+    const noteId1 = await createNote(accessToken, { title: 'First Created' });
+    await createNote(accessToken, { title: 'Second Created' });
+
+    // default sortOrder=desc by updatedAt → page1=[Second], page2=[First]
+    const res = await request(app)
+      .get(`${NOTES_BASE}?page=2&limit=1`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].id).toBe(noteId1);
+  });
+
+  it('LIST-IT-08: page=99 (out of range) → 200, data=[], correct meta.total', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken);
+    await createNote(accessToken);
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}?page=99`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.meta.total).toBe(2);
+  });
+
+  it('LIST-IT-09: sortBy=title&sortOrder=asc → data sorted alphabetically', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'Zebra' });
+    await createNote(accessToken, { title: 'Apple' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}?sortBy=title&sortOrder=asc`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].title).toBe('Apple');
+    expect(res.body.data[1].title).toBe('Zebra');
+  });
+
+  it('LIST-IT-10: tags=id1 filter → only tagged note returned', async () => {
+    const { accessToken } = await registerUser();
+    const tagId = await createTag(accessToken, { name: 'work' });
+    const taggedNoteId = await createNote(accessToken, { title: 'Tagged', tagIds: [tagId] });
+    await createNote(accessToken, { title: 'Untagged' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}?tags=${tagId}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].id).toBe(taggedNoteId);
+  });
+
+  it('LIST-IT-11: tags=id1,id2 AND filter → only note with both tags returned', async () => {
+    const { accessToken } = await registerUser();
+    const tag1 = await createTag(accessToken, { name: 'tag1' });
+    const tag2 = await createTag(accessToken, { name: 'tag2' });
+    const bothTagsNoteId = await createNote(accessToken, { title: 'Both Tags', tagIds: [tag1, tag2] });
+    await createNote(accessToken, { title: 'One Tag Only', tagIds: [tag1] });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}?tags=${tag1},${tag2}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].id).toBe(bothTagsNoteId);
+  });
+
+  it('LIST-IT-12: tags= contains foreign tag → 400 INVALID_TAG', async () => {
+    const { accessToken: aliceToken } = await registerUser(VALID_USER);
+    const { accessToken: bobToken } = await registerUser(OTHER_USER);
+    const bobTagId = await createTag(bobToken, { name: 'bob-only' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}?tags=${bobTagId}`)
+      .set('Authorization', `Bearer ${aliceToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('INVALID_TAG');
+  });
+
+  it('LIST-IT-13: limit=101 → 400 VALIDATION_ERROR', async () => {
+    const { accessToken } = await registerUser();
+    const res = await request(app)
+      .get(`${NOTES_BASE}?limit=101`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('LIST-IT-14: soft-deleted note excluded — meta.total reflects only live notes', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'Live Note' });
+    const deletedId = await createNote(accessToken, { title: 'Deleted Note' });
+    await request(app)
+      .delete(`${NOTES_BASE}/${deletedId}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    const res = await request(app)
+      .get(NOTES_BASE)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.meta.total).toBe(1);
+    expect(res.body.data[0].title).toBe('Live Note');
   });
 });

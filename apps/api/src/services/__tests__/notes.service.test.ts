@@ -6,6 +6,8 @@ vi.mock('../../lib/prisma.js', () => ({
     note: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
       update: vi.fn(),
     },
     tag: {
@@ -20,23 +22,28 @@ vi.mock('../../lib/prisma.js', () => ({
       findMany: vi.fn(),
       deleteMany: vi.fn(),
     },
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({
+    $transaction: vi.fn(async (fnOrOps: unknown) => {
+      if (Array.isArray(fnOrOps)) {
+        return Promise.all(fnOrOps as Promise<unknown>[]);
+      }
+      return (fnOrOps as (tx: unknown) => Promise<unknown>)({
         note: { update: vi.fn() },
         noteTag: { deleteMany: vi.fn(), createMany: vi.fn() },
         noteVersion: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn() },
-      }),
-    ),
+      });
+    }),
   },
 }));
 
 import { prisma } from '../../lib/prisma.js';
-import { create, getById, update, softDelete } from '../notes.service.js';
+import { create, getById, update, softDelete, list } from '../notes.service.js';
 
 type MockPrisma = {
   note: {
     create: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
+    count: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
   tag: { findMany: ReturnType<typeof vi.fn> };
@@ -448,5 +455,123 @@ describe('softDelete', () => {
     expect(err).toBeInstanceOf(AppError);
     expect((err as AppError).code).toBe('NOT_FOUND');
     expect(mockPrisma.note.update).not.toHaveBeenCalled();
+  });
+});
+
+// ── list ───────────────────────────────────────────────────────────────────────
+
+const DEFAULT_QUERY = {
+  page: 1,
+  limit: 20,
+  sortBy: 'updatedAt' as const,
+  sortOrder: 'desc' as const,
+  tags: undefined,
+};
+
+function mockNoteListRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'note-1',
+    title: 'My Note',
+    contentText: 'some content',
+    updatedAt: new Date('2026-01-01'),
+    tags: [],
+    ...overrides,
+  };
+}
+
+describe('list', () => {
+  it('LIST-UT-01: happy path — no tags, default pagination → returns { data, meta }', async () => {
+    mockPrisma.note.count.mockResolvedValue(1);
+    mockPrisma.note.findMany.mockResolvedValue([mockNoteListRow()]);
+
+    const result = await list('user-1', DEFAULT_QUERY);
+
+    expect(result.data).toHaveLength(1);
+    expect(result.meta).toEqual({ total: 1, page: 1, limit: 20, totalPages: 1 });
+    expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it('LIST-UT-02: valid tags CSV → tag.findMany called for validation; findMany where includes AND', async () => {
+    mockPrisma.tag.findMany.mockResolvedValue([{ id: 'tag-1' }, { id: 'tag-2' }]);
+    mockPrisma.note.count.mockResolvedValue(0);
+    mockPrisma.note.findMany.mockResolvedValue([]);
+
+    await list('user-1', { ...DEFAULT_QUERY, tags: 'tag-1,tag-2' });
+
+    expect(mockPrisma.tag.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['tag-1', 'tag-2'] }, userId: 'user-1' } }),
+    );
+    const findManyCall = mockPrisma.note.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(findManyCall.where).toHaveProperty('AND');
+  });
+
+  it('LIST-UT-03: foreign tag in CSV → throws INVALID_TAG', async () => {
+    mockPrisma.tag.findMany.mockResolvedValue([]);
+
+    await expect(list('user-1', { ...DEFAULT_QUERY, tags: 'tag-foreign' })).rejects.toThrow(
+      expect.objectContaining({ code: 'INVALID_TAG', statusCode: 400 }),
+    );
+  });
+
+  it('LIST-UT-04: contentText null → contentPreview is empty string', async () => {
+    mockPrisma.note.count.mockResolvedValue(1);
+    mockPrisma.note.findMany.mockResolvedValue([mockNoteListRow({ contentText: null })]);
+
+    const result = await list('user-1', DEFAULT_QUERY);
+
+    expect(result.data[0].contentPreview).toBe('');
+  });
+
+  it('LIST-UT-05: contentText longer than 150 chars → contentPreview hard-cut at 150', async () => {
+    mockPrisma.note.count.mockResolvedValue(1);
+    mockPrisma.note.findMany.mockResolvedValue([mockNoteListRow({ contentText: 'x'.repeat(200) })]);
+
+    const result = await list('user-1', DEFAULT_QUERY);
+
+    expect(result.data[0].contentPreview).toHaveLength(150);
+    expect(result.data[0].contentPreview).toBe('x'.repeat(150));
+  });
+
+  it('LIST-UT-06: sortBy title asc → note.findMany called with orderBy { title: asc }', async () => {
+    mockPrisma.note.count.mockResolvedValue(0);
+    mockPrisma.note.findMany.mockResolvedValue([]);
+
+    await list('user-1', { ...DEFAULT_QUERY, sortBy: 'title', sortOrder: 'asc' });
+
+    const findManyCall = mockPrisma.note.findMany.mock.calls[0][0] as { orderBy: Record<string, unknown> };
+    expect(findManyCall.orderBy).toEqual({ title: 'asc' });
+  });
+
+  it('LIST-UT-07: page=2, limit=5 → note.findMany called with skip=5, take=5', async () => {
+    mockPrisma.note.count.mockResolvedValue(10);
+    mockPrisma.note.findMany.mockResolvedValue([]);
+
+    await list('user-1', { ...DEFAULT_QUERY, page: 2, limit: 5 });
+
+    const findManyCall = mockPrisma.note.findMany.mock.calls[0][0] as { skip: number; take: number };
+    expect(findManyCall.skip).toBe(5);
+    expect(findManyCall.take).toBe(5);
+  });
+
+  it('LIST-UT-08: total=0 → meta.totalPages=0, data=[]', async () => {
+    mockPrisma.note.count.mockResolvedValue(0);
+    mockPrisma.note.findMany.mockResolvedValue([]);
+
+    const result = await list('user-1', DEFAULT_QUERY);
+
+    expect(result.data).toEqual([]);
+    expect(result.meta.total).toBe(0);
+    expect(result.meta.totalPages).toBe(0);
+  });
+
+  it('LIST-UT-09: no tags param → tag.findMany NOT called; where has no AND key', async () => {
+    mockPrisma.note.count.mockResolvedValue(0);
+    mockPrisma.note.findMany.mockResolvedValue([]);
+
+    await list('user-1', DEFAULT_QUERY);
+
+    expect(mockPrisma.tag.findMany).not.toHaveBeenCalled();
+    const findManyCall = mockPrisma.note.findMany.mock.calls[0][0] as { where: Record<string, unknown> };
+    expect(findManyCall.where).not.toHaveProperty('AND');
   });
 });
