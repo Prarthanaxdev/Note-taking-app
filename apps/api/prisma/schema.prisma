@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String             @id @default(cuid())
+  email         String             @unique
+  passwordHash  String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  notes         Note[]
+  tags          Tag[]
+  refreshTokens RefreshToken[]
+  shareLinks    ShareLink[]
+  otps          PasswordResetOTP[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Note {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  title       String        @db.VarChar(255)
+  content     Json?
+  contentText String?
+  deletedAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  tags        NoteTag[]
+  versions    NoteVersion[]
+  shareLinks  ShareLink[]
+
+  @@index([userId, deletedAt])
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  name      String    @db.VarChar(50)
+  color     String?   @db.VarChar(7)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  notes     NoteTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+}
+
+model NoteVersion {
+  id      String   @id @default(cuid())
+  noteId  String
+  note    Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  title   String   @db.VarChar(255)
+  content Json?
+  savedAt DateTime @default(now())
+
+  @@index([noteId, savedAt(sort: Desc)])
+}
+
+model ShareLink {
+  id        String    @id @default(cuid())
+  noteId    String
+  note      Note      @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  token     String    @unique @default(uuid())
+  expiresAt DateTime?
+  revokedAt DateTime?
+  viewCount Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([token])
+  @@index([noteId])
+}
+
+model PasswordResetOTP {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  code      String    @db.VarChar(6)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}

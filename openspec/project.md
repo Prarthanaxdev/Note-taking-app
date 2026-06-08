@@ -1,0 +1,134 @@
+# Project Context — Note Taking Application (NTA)
+
+> This file is the single authoritative context injected into every OpenSpec artifact.
+> Keep it dense and constraint-focused. Full details live in AGENTS.md.
+
+---
+
+## What This Product Is
+
+A full-stack web app for authenticated users to create, edit, tag, search, and share rich-text notes with version history. Two actors: **Registered User** (full access) and **Anonymous Visitor** (read-only via public share link). Greenfield build, no existing code.
+
+Project refs: AB-1001 – AB-1016. Status: pre-implementation. Docs: `docs/FRS-NoteTakingApp.docx` (behavior), `docs/SDS-NoteTakingApp.docx` (design).
+
+---
+
+## Tech Stack (locked — do not substitute)
+
+| Layer | Choice |
+|---|---|
+| Backend | Node.js 22, Express 5, TypeScript |
+| Frontend | React 19, Vite, TypeScript |
+| Database | PostgreSQL 16, Prisma ORM |
+| Validation | Zod — schemas live in `packages/shared` only |
+| Frontend state | Zustand (auth/UI) + TanStack Query v5 (server state) |
+| Rich text | TipTap |
+| UI | shadcn/ui + React Hook Form |
+| HTTP client | Axios |
+| Router | React Router v6 |
+| Package manager | pnpm workspaces |
+| Testing | Vitest, Supertest, React Testing Library, MSW, Playwright |
+
+---
+
+## Repository Structure
+
+```
+apps/api/src/        routes/ → middleware/ → services/ → lib/ (prisma, jwt, otp, hash, errors)
+apps/api/prisma/     schema.prisma + migrations/ (raw SQL for FTS tsvector)
+apps/web/src/        pages/ → components/ → hooks/ → store/ → lib/
+packages/shared/src/ schemas/ (Zod) + types/ (TS) — imported by both apps
+```
+
+---
+
+## Architectural Constraints
+
+**Backend layering (strict):**
+- Routes are thin: HTTP method + path + middleware chain only. No business logic.
+- Services own all logic. Signature: `(userId: string, dto: T)` — never accepts `req`/`res`.
+- Authorization at service layer via `findFirst({ where: { id, userId } })`. Never at route layer alone.
+- Errors thrown as `AppError(code, message, statusCode, fields?)` → caught by global `errorMiddleware`.
+- Every multi-table mutation uses `prisma.$transaction()`.
+- `$queryRaw` uses tagged template literals only — no string interpolation.
+
+**Auth model:**
+- Access token: JWT HS256, 15 min, stored in Zustand memory only. Never localStorage.
+- Refresh token: random bytes in HttpOnly cookie. SHA-256 hash stored in DB. Rotates on every use.
+- `req.user.id` from JWT is the only valid source of `userId`. `req.body.userId` is never trusted.
+- Cross-user resource access returns 404 (not 403) to prevent enumeration.
+
+**Frontend layering (strict):**
+- TanStack Query hooks in `hooks/` own all server state. No direct fetch in components.
+- Zustand in `store/` owns only: `accessToken`, `user`, modal/drawer open flags.
+- Silent refresh on 401 lives only in `lib/apiClient.ts`. No duplicate 401 handling.
+- All Zod schemas come from `packages/shared`. Never inline.
+
+**Shared package rules:**
+- Zero runtime deps except Zod. No imports from `apps/`.
+- All types + schemas used by both sides live here. Update shared first, then apps.
+- Adding an error code: add to `AppErrorCode` union in `errors.types.ts` before throwing it.
+
+---
+
+## Database Constraints
+
+- IDs: CUID (URL-safe, monotonic).
+- Soft delete: `deletedAt` timestamp. Physical deletes never happen within 30 days.
+- FTS: `ts` column on `Note` is a `GENERATED ALWAYS AS` tsvector. GIN-indexed. Added via raw SQL migration (Prisma doesn't support generated columns natively).
+- FTS queries: `plainto_tsquery()` always (sanitizes user input). Never `to_tsquery()` on user input.
+- Atomic increments: `{ increment: 1 }` in Prisma — never read-modify-write.
+- Version snapshots: created in same transaction as note update. Auto-purge at 50 per note.
+
+---
+
+## API Conventions
+
+- Base path: `/api/v1`. All protected routes require `Authorization: Bearer <token>`.
+- Status codes: 201 create · 200 read/update · 204 delete · 400 validation · 401 auth · 404 not-found-or-cross-user · 409 conflict.
+- Error envelope: `{ error: { code: string, message: string, fields?: Record<string, string> } }`.
+- Paginated response: `{ data: T[], meta: { total, page, limit, totalPages } }`. Default page=1, limit=20, max=100.
+- One public unauthenticated route: `GET /public/notes/:token`.
+- Rate limits: 10 req/15min on register/login, 5 req/15min on forgot-password.
+
+---
+
+## Team Conventions
+
+**Naming:** `camelCase` vars/functions · `PascalCase` types/components · `UPPER_SNAKE_CASE` error codes · `feature.service.ts` / `FeatureComponent.tsx` file names.
+
+**Commits:** `<type>(<scope>): <imperative summary>` — types: feat/fix/refactor/test/chore/docs · scopes: api/web/shared/db/infra.
+
+**Branches:** `<type>/<ticket-id>-<short-slug>` e.g. `feat/AB-1002-auth-refresh-rotation`.
+
+**Quality gates (order matters):** lint → build (type-check) → test. All three must pass before merge.
+
+**OTP:** logs to stdout only. No email is sent under any circumstance.
+
+---
+
+## Quality Standards
+
+| Layer | Coverage Gate |
+|---|---|
+| `apps/api` services + routes | ≥ 80% line + branch |
+| `apps/web` hooks + components | ≥ 80% line + branch |
+| `packages/shared` schemas | ≥ 90% |
+
+Integration tests use a real PostgreSQL database (`nta_test`), not mocks. Each test file truncates all tables in `beforeEach`. E2E uses Playwright over the full running stack (7 user journeys, page-objects pattern).
+
+---
+
+## Hard No's (anti-patterns that must never appear in proposals, designs, or tasks)
+
+- Access token in localStorage or sessionStorage
+- `req.body.userId` for ownership checks
+- `to_tsquery()` on user input
+- String interpolation in `$queryRaw`
+- Read-modify-write on `viewCount` (use atomic `increment`)
+- 403 response for cross-user resource access (use 404)
+- Authorization logic in middleware only — must be in service layer
+- Shared types/schemas defined inside `apps/api` or `apps/web`
+- Runtime dependencies in `packages/shared` other than Zod
+- Committing `.env` files
+- Skipping version snapshot on note update

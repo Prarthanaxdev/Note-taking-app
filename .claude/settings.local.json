@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec new *)",
+      "Bash(openspec status *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('context loaded:', bool\\(d.get\\('actionContext'\\) or d\\)\\)\")",
+      "Bash(openspec instructions *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); ctx=d.get\\('context',''\\); print\\(f'Context injected: {len\\(ctx\\)} chars'\\); print\\('First 120 chars:', ctx[:120]\\)\")",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm *)",
+      "Bash(npx husky *)",
+      "Bash(npx --no -- commitlint)"
+    ]
+  }
+}
