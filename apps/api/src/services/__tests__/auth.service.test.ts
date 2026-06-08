@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AppError } from '../../lib/errors.js';
+import { generateOtp } from '../../lib/otp.js';
 
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
@@ -13,12 +14,17 @@ vi.mock('../../lib/prisma.js', () => ({
       updateMany: vi.fn(),
       update: vi.fn(),
     },
+    passwordResetOTP: {
+      updateMany: vi.fn(),
+      create: vi.fn(),
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
-        refreshToken: {
-          update: vi.fn(),
-          create: vi.fn(),
-        },
+        refreshToken: { update: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+        passwordResetOTP: { updateMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+        user: { update: vi.fn() },
       }),
     ),
   },
@@ -33,9 +39,13 @@ vi.mock('../../lib/hash.js', () => ({
   comparePassword: vi.fn(),
 }));
 
+vi.mock('../../lib/otp.js', () => ({
+  generateOtp: vi.fn().mockReturnValue('123456'),
+}));
+
 import { prisma } from '../../lib/prisma.js';
-import { comparePassword } from '../../lib/hash.js';
-import { register, login, logout, refreshTokens } from '../auth.service.js';
+import { comparePassword, hashPassword } from '../../lib/hash.js';
+import { register, login, logout, refreshTokens, forgotPassword, resetPassword } from '../auth.service.js';
 
 type MockPrisma = {
   user: { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
@@ -45,8 +55,15 @@ type MockPrisma = {
     updateMany: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
+  passwordResetOTP: {
+    updateMany: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
   $transaction: ReturnType<typeof vi.fn>;
 };
+
 
 const mockPrisma = prisma as unknown as MockPrisma;
 
@@ -239,5 +256,210 @@ describe('logout', () => {
     const { rawRefreshToken } = await register('alice@example.com', 'password123');
     expect(rawRefreshToken).toHaveLength(64);
     expect(rawRefreshToken).toMatch(/^[0-9a-f]+$/);
+  });
+});
+
+// ── forgotPassword ────────────────────────────────────────────────────────────
+
+describe('forgotPassword', () => {
+  beforeEach(() => {
+    vi.mocked(generateOtp).mockReturnValue('123456');
+  });
+
+  it('AUTH-UT-25: resolves silently without calling $transaction when user is not found', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(forgotPassword('nobody@test.com')).resolves.toBeUndefined();
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('AUTH-UT-26: calls $transaction once and logs OTP to console.log when user exists', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await forgotPassword('a@b.com');
+
+    expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('123456'));
+    consoleSpy.mockRestore();
+  });
+
+  it('AUTH-UT-27: invalidates prior OTPs before creating new one within the transaction', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    const callOrder: string[] = [];
+    const txUpdateMany = vi.fn().mockImplementation(() => {
+      callOrder.push('updateMany');
+      return Promise.resolve({ count: 1 });
+    });
+    const txCreate = vi.fn().mockImplementation(() => {
+      callOrder.push('create');
+      return Promise.resolve({});
+    });
+    mockPrisma.$transaction.mockImplementationOnce(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({ passwordResetOTP: { updateMany: txUpdateMany, create: txCreate } }),
+    );
+
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await forgotPassword('a@b.com');
+
+    expect(callOrder[0]).toBe('updateMany');
+    expect(callOrder[1]).toBe('create');
+    consoleSpy.mockRestore();
+  });
+
+  it('AUTH-UT-28: creates OTP record with code from generateOtp mock ("123456")', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    const txCreate = vi.fn().mockResolvedValue({});
+    mockPrisma.$transaction.mockImplementationOnce(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({ passwordResetOTP: { updateMany: vi.fn().mockResolvedValue({}), create: txCreate } }),
+    );
+
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await forgotPassword('a@b.com');
+
+    expect(txCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ code: '123456' }) }),
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('AUTH-UT-29: OTP expiresAt is approximately now + 15 minutes', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    let capturedData: Record<string, unknown> | undefined;
+    const txCreate = vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
+      capturedData = args.data;
+      return Promise.resolve({});
+    });
+    mockPrisma.$transaction.mockImplementationOnce(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({ passwordResetOTP: { updateMany: vi.fn().mockResolvedValue({}), create: txCreate } }),
+    );
+
+    const before = Date.now();
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await forgotPassword('a@b.com');
+
+    const expiresAt = capturedData?.expiresAt as Date;
+    const expectedMs = before + 15 * 60 * 1000;
+    expect(expiresAt.getTime()).toBeGreaterThanOrEqual(expectedMs - 1000);
+    expect(expiresAt.getTime()).toBeLessThanOrEqual(expectedMs + 5000);
+    consoleSpy.mockRestore();
+  });
+});
+
+// ── resetPassword ─────────────────────────────────────────────────────────────
+
+describe('resetPassword', () => {
+  const futureDate = new Date(Date.now() + 15 * 60 * 1000);
+
+  it('AUTH-UT-30: throws OTP_INVALID (400) when user is not found', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(resetPassword('nobody@test.com', '123456', 'newpass123')).rejects.toThrow(
+      expect.objectContaining({ code: 'OTP_INVALID', statusCode: 400 }),
+    );
+  });
+
+  it('AUTH-UT-31: throws OTP_INVALID (400) when OTP record does not exist', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    mockPrisma.passwordResetOTP.findFirst.mockResolvedValue(null);
+
+    await expect(resetPassword('a@b.com', '000000', 'newpass123')).rejects.toThrow(
+      expect.objectContaining({ code: 'OTP_INVALID', statusCode: 400 }),
+    );
+  });
+
+  it('AUTH-UT-32: throws OTP_EXPIRED (400) when OTP is expired', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    mockPrisma.passwordResetOTP.findFirst.mockResolvedValue({
+      id: 'otp-1',
+      code: '123456',
+      usedAt: null,
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    await expect(resetPassword('a@b.com', '123456', 'newpass123')).rejects.toThrow(
+      expect.objectContaining({ code: 'OTP_EXPIRED', statusCode: 400 }),
+    );
+  });
+
+  it('AUTH-UT-33: throws OTP_USED (400) when OTP has already been used', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    mockPrisma.passwordResetOTP.findFirst.mockResolvedValue({
+      id: 'otp-1',
+      code: '123456',
+      usedAt: new Date(),
+      expiresAt: futureDate,
+    });
+
+    await expect(resetPassword('a@b.com', '123456', 'newpass123')).rejects.toThrow(
+      expect.objectContaining({ code: 'OTP_USED', statusCode: 400 }),
+    );
+  });
+
+  it('AUTH-UT-34b: throws OTP_EXPIRED (not OTP_USED) when OTP is both expired and used', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    mockPrisma.passwordResetOTP.findFirst.mockResolvedValue({
+      id: 'otp-1',
+      code: '123456',
+      usedAt: new Date(),
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    const err = await resetPassword('a@b.com', '123456', 'newpass123').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe('OTP_EXPIRED');
+  });
+
+  it('AUTH-UT-35b: resolves and calls $transaction for a valid OTP', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    mockPrisma.passwordResetOTP.findFirst.mockResolvedValue({
+      id: 'otp-1',
+      code: '123456',
+      usedAt: null,
+      expiresAt: futureDate,
+    });
+
+    await expect(resetPassword('a@b.com', '123456', 'newpass123')).resolves.toBeUndefined();
+    expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+  });
+
+  it('AUTH-UT-36b: all three operations are called within the $transaction callback', async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: 'uid-1', email: 'a@b.com' });
+    mockPrisma.passwordResetOTP.findFirst.mockResolvedValue({
+      id: 'otp-1',
+      code: '123456',
+      usedAt: null,
+      expiresAt: futureDate,
+    });
+    // Explicitly set hashPassword return value for this test to avoid mock state drift
+    vi.mocked(hashPassword).mockResolvedValue('hashed-password');
+
+    const txOtpUpdate = vi.fn().mockResolvedValue({});
+    const txUserUpdate = vi.fn().mockResolvedValue({});
+    const txTokenUpdateMany = vi.fn().mockResolvedValue({ count: 0 });
+
+    mockPrisma.$transaction.mockImplementationOnce(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          passwordResetOTP: { update: txOtpUpdate, updateMany: vi.fn(), create: vi.fn() },
+          user: { update: txUserUpdate },
+          refreshToken: { updateMany: txTokenUpdateMany, update: vi.fn(), create: vi.fn() },
+        }),
+    );
+
+    await resetPassword('a@b.com', '123456', 'newpass123');
+
+    expect(txOtpUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'otp-1' }, data: { usedAt: expect.any(Date) } }),
+    );
+    expect(txUserUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'uid-1' }, data: { passwordHash: 'hashed-password' } }),
+    );
+    expect(txTokenUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'uid-1', revokedAt: null }, data: { revokedAt: expect.any(Date) } }),
+    );
   });
 });
