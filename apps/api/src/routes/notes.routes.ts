@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema } from 'shared';
+import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema, SearchQuerySchema } from 'shared';
 import * as notesService from '../services/notes.service.js';
+import * as searchService from '../services/search.service.js';
 
 export const notesRouter: IRouter = Router();
 
@@ -32,6 +33,21 @@ notesRouter.post(
         req.body as Parameters<typeof notesService.create>[1],
       );
       res.status(201).json(note);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+notesRouter.get(
+  '/search',
+  authenticate,
+  validate(SearchQuerySchema, 'query'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const query = req.query as unknown as Parameters<typeof searchService.search>[1];
+      const result = await searchService.search(req.user.id, query);
+      res.json(result);
     } catch (err) {
       next(err);
     }

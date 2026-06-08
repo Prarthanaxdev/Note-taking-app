@@ -564,3 +564,135 @@ describe.skipIf(!DB_AVAILABLE)('GET /api/v1/notes', () => {
     expect(res.body.data[0].title).toBe('Live Note');
   });
 });
+
+// ── GET /api/v1/notes/search ──────────────────────────────────────────────────
+
+describe.skipIf(!DB_AVAILABLE)('GET /api/v1/notes/search', () => {
+  it('SRCH-IT-01: no auth header → 401', async () => {
+    const res = await request(app).get(`${NOTES_BASE}/search?q=test`);
+    expect(res.status).toBe(401);
+  });
+
+  it('SRCH-IT-02: missing q param → 400 VALIDATION_ERROR', async () => {
+    const { accessToken } = await registerUser();
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('SRCH-IT-03: whitespace-only q → 400 QUERY_REQUIRED', async () => {
+    const { accessToken } = await registerUser();
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=%20%20`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('QUERY_REQUIRED');
+  });
+
+  it('SRCH-IT-04: valid query, no matching notes → 200 empty', async () => {
+    const { accessToken } = await registerUser();
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=xyzzyunmatchable99`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.meta.total).toBe(0);
+  });
+
+  it('SRCH-IT-05: query matches note title → 200 with correct result', async () => {
+    const { accessToken } = await registerUser();
+    const noteId = await createNote(accessToken, { title: 'PostgreSQL indexing guide' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=indexing`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].id).toBe(noteId);
+    expect(res.body.data[0].title).toBe('PostgreSQL indexing guide');
+  });
+
+  it('SRCH-IT-06: query matches note contentText → 200 with result', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'Searchable content note xyzuniquetoken' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=xyzuniquetoken`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('SRCH-IT-07: matching result headline contains <mark> tags', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'Guide to fulltext search features' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=fulltext`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].headline).toContain('<mark>');
+  });
+
+  it('SRCH-IT-08: soft-deleted note excluded from results', async () => {
+    const { accessToken } = await registerUser();
+    const noteId = await createNote(accessToken, { title: 'Deletable softdelete testnote' });
+
+    await request(app)
+      .delete(`${NOTES_BASE}/${noteId}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=softdelete`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('SRCH-IT-09: cross-user isolation — Alice cannot see Bob\'s notes', async () => {
+    const alice = await registerUser(VALID_USER);
+    const bob = await registerUser(OTHER_USER);
+
+    await createNote(bob.accessToken, { title: 'Bob secret crossusertest note' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=crossusertest`)
+      .set('Authorization', `Bearer ${alice.accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('SRCH-IT-10: pagination page=1&limit=1 when 2 notes match', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'Pagination alpha pagintoken' });
+    await createNote(accessToken, { title: 'Pagination beta pagintoken' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=pagintoken&page=1&limit=1`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.meta.total).toBe(2);
+    expect(res.body.meta.totalPages).toBe(2);
+  });
+
+  it('SRCH-IT-11: updatedAt in response is ISO 8601 string', async () => {
+    const { accessToken } = await registerUser();
+    await createNote(accessToken, { title: 'ISO date check isotimetest' });
+
+    const res = await request(app)
+      .get(`${NOTES_BASE}/search?q=isotimetest`)
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
