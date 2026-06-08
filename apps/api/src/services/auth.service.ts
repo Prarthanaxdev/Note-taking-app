@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { signAccessToken } from '../lib/jwt.js';
 import { hashPassword, comparePassword } from '../lib/hash.js';
+import { generateOtp } from '../lib/otp.js';
 
 const hashToken = (raw: string): string =>
   createHash('sha256').update(raw).digest('hex');
@@ -90,5 +91,73 @@ export async function logout(rawRefreshToken: string | undefined): Promise<void>
   await prisma.refreshToken.updateMany({
     where: { token: hashToken(rawRefreshToken), revokedAt: null },
     data: { revokedAt: new Date() },
+  });
+}
+
+export async function forgotPassword(email: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (!user) return; // BR-AUTH-08: silent no-op, always returns 200
+
+  const otp = generateOtp();
+  const expiresAt = new Date(
+    Date.now() + Number(process.env.OTP_EXPIRES_MINUTES ?? 15) * 60 * 1000,
+  );
+
+  await prisma.$transaction(async (tx) => {
+    // UC-AUTH-05 Alt Flow A: invalidate all prior unused OTPs atomically
+    await tx.passwordResetOTP.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    await tx.passwordResetOTP.create({
+      data: { userId: user.id, code: otp, expiresAt },
+    });
+  });
+
+  console.log(`[OTP] ${normalizedEmail}: ${otp}`); // BR-AUTH-10: stdout only, never email
+}
+
+export async function resetPassword(
+  email: string,
+  otp: string,
+  newPassword: string,
+): Promise<void> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const now = new Date();
+
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (!user) {
+    // OTP_INVALID (not NOT_FOUND) — prevents email enumeration
+    throw new AppError('OTP_INVALID', 'Invalid reset code.', 400);
+  }
+
+  const otpRecord = await prisma.passwordResetOTP.findFirst({
+    where: { userId: user.id, code: otp },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!otpRecord) {
+    throw new AppError('OTP_INVALID', 'Invalid reset code.', 400);
+  }
+  // FRS Alt Flow A before Alt Flow B: check expiry before used
+  if (otpRecord.expiresAt <= now) {
+    throw new AppError('OTP_EXPIRED', 'This reset code has expired. Please request a new one.', 400);
+  }
+  if (otpRecord.usedAt !== null) {
+    throw new AppError('OTP_USED', 'This reset code has already been used.', 400);
+  }
+
+  // Hash outside transaction — bcrypt is CPU-bound, not DB-bound
+  const passwordHash = await hashPassword(newPassword);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.passwordResetOTP.update({ where: { id: otpRecord.id }, data: { usedAt: now } });
+    await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
+    // BR-AUTH-09: revoke all active refresh tokens after password reset
+    await tx.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: now },
+    });
   });
 }
