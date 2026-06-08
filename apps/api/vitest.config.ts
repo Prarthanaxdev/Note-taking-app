@@ -15,7 +15,6 @@ export default defineConfig({
         // Stubs with no logic yet — covered by integration tests in later tickets
         'src/routes/**',
         'src/lib/prisma.ts',
-        'src/middleware/auth.middleware.ts',
         'src/middleware/rateLimit.middleware.ts',
       ],
       thresholds: {
