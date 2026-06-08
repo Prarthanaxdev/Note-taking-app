@@ -4,6 +4,8 @@ export type TagSummary = {
   color: string | null;
 };
 
+export type TagWithCount = TagSummary & { noteCount: number };
+
 export type PaginationMeta = {
   total: number;
   page: number;
