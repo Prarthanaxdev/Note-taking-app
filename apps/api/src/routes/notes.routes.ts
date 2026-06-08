@@ -5,6 +5,7 @@ import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema, SearchQuerySch
 import * as notesService from '../services/notes.service.js';
 import * as searchService from '../services/search.service.js';
 import * as sharesService from '../services/shares.service.js';
+import { versionsRouter } from './versions.routes.js';
 
 export const notesRouter: IRouter = Router();
 
@@ -81,6 +82,8 @@ notesRouter.get(
     }
   },
 );
+
+notesRouter.use('/:id/versions', versionsRouter);
 
 notesRouter.get(
   '/:id',

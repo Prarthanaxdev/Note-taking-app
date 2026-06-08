@@ -48,3 +48,8 @@ export type ShareLink = {
   viewCount: number;
   createdAt: string;
 };
+
+export type VersionListItem = {
+  id: string;
+  savedAt: string;
+};
