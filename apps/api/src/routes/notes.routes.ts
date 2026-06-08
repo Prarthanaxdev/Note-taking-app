@@ -1,9 +1,10 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from 'express';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema, SearchQuerySchema } from 'shared';
+import { CreateNoteSchema, UpdateNoteSchema, NoteListQuerySchema, SearchQuerySchema, CreateShareSchema } from 'shared';
 import * as notesService from '../services/notes.service.js';
 import * as searchService from '../services/search.service.js';
+import * as sharesService from '../services/shares.service.js';
 
 export const notesRouter: IRouter = Router();
 
@@ -48,6 +49,33 @@ notesRouter.get(
       const query = req.query as unknown as Parameters<typeof searchService.search>[1];
       const result = await searchService.search(req.user.id, query);
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+notesRouter.post(
+  '/:id/share',
+  authenticate,
+  validate(CreateShareSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const link = await sharesService.createShareLink(req.user.id, String(req.params.id), req.body);
+      res.status(201).json(link);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+notesRouter.get(
+  '/:id/shares',
+  authenticate,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const links = await sharesService.listShareLinks(req.user.id, String(req.params.id));
+      res.json(links);
     } catch (err) {
       next(err);
     }
