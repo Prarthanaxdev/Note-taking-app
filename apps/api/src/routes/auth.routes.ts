@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from 'express';
 import { validate } from '../middleware/validate.middleware.js';
-import { authLimiter } from '../middleware/rateLimit.middleware.js';
-import { RegisterSchema, LoginSchema } from 'shared';
+import { authLimiter, forgotPasswordLimiter } from '../middleware/rateLimit.middleware.js';
+import { RegisterSchema, LoginSchema, ForgotPasswordSchema, ResetPasswordSchema } from 'shared';
 import { AppError } from '../lib/errors.js';
 import * as authService from '../services/auth.service.js';
 
@@ -93,6 +93,39 @@ authRouter.post(
       await authService.logout(rawToken);
       clearRefreshCookie(res);
       res.status(200).json({ message: 'Logged out' });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+authRouter.post(
+  '/forgot-password',
+  forgotPasswordLimiter,
+  validate(ForgotPasswordSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email } = req.body as { email: string };
+      await authService.forgotPassword(email);
+      res.status(200).json({ message: 'If registered, an OTP has been sent.' });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+authRouter.post(
+  '/reset-password',
+  validate(ResetPasswordSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email, otp, newPassword } = req.body as {
+        email: string;
+        otp: string;
+        newPassword: string;
+      };
+      await authService.resetPassword(email, otp, newPassword);
+      res.status(200).json({ message: 'Password updated.' });
     } catch (err) {
       next(err);
     }
