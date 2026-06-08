@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll, beforeAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../../index.js';
 import { getTestPrisma, resetDatabase } from '../../test/integration-setup.js';
@@ -213,6 +213,172 @@ describe.skipIf(!DB_AVAILABLE)('POST /auth/logout', () => {
     const res = await request(app).post(`${BASE}/logout`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ message: 'Logged out' });
+  });
+});
+
+// ── POST /auth/forgot-password ────────────────────────────────────────────────
+
+async function triggerForgotPassword(email: string): Promise<string> {
+  let capturedOtp = '';
+  const spy = vi.spyOn(console, 'log').mockImplementation((msg: unknown) => {
+    const match = String(msg).match(/\[OTP\] .+: (\d{6})/);
+    if (match) capturedOtp = match[1];
+  });
+  await request(app).post(`${BASE}/forgot-password`).send({ email });
+  spy.mockRestore();
+  return capturedOtp;
+}
+
+describe.skipIf(!DB_AVAILABLE)('POST /auth/forgot-password', () => {
+  it('AUTH-IT-21: returns 200 with generic message for a registered email', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    const res = await request(app).post(`${BASE}/forgot-password`).send({ email: VALID_USER.email });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'If registered, an OTP has been sent.' });
+  });
+
+  it('AUTH-IT-22: returns 200 with identical message for unknown email — prevents enumeration', async () => {
+    const res = await request(app)
+      .post(`${BASE}/forgot-password`)
+      .send({ email: 'nobody@example.com' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'If registered, an OTP has been sent.' });
+  });
+
+  it('AUTH-IT-23: returns 400 VALIDATION_ERROR with fields.email for invalid email format', async () => {
+    const res = await request(app)
+      .post(`${BASE}/forgot-password`)
+      .send({ email: 'not-an-email' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.fields).toHaveProperty('email');
+  });
+
+  it('AUTH-IT-24: creates OTP record in DB for a registered user', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    await triggerForgotPassword(VALID_USER.email);
+
+    const user = await getTestPrisma().user.findUnique({ where: { email: VALID_USER.email } });
+    const otpRecord = await getTestPrisma().passwordResetOTP.findFirst({
+      where: { userId: user!.id, usedAt: null },
+    });
+    expect(otpRecord).not.toBeNull();
+    expect(otpRecord!.code).toMatch(/^\d{6}$/);
+    expect(otpRecord!.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+});
+
+// ── POST /auth/reset-password ─────────────────────────────────────────────────
+
+describe.skipIf(!DB_AVAILABLE)('POST /auth/reset-password', () => {
+  it('AUTH-IT-25: returns 200 and password updated message for valid email + OTP + newPassword', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    const otp = await triggerForgotPassword(VALID_USER.email);
+
+    const res = await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp, newPassword: 'newSecurePass1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'Password updated.' });
+  });
+
+  it('AUTH-IT-26: returns 400 OTP_INVALID for a wrong OTP code', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    await triggerForgotPassword(VALID_USER.email);
+
+    const res = await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp: '000000', newPassword: 'newSecurePass1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('OTP_INVALID');
+  });
+
+  it('AUTH-IT-27: returns 400 OTP_INVALID for unknown email — prevents enumeration', async () => {
+    const res = await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: 'nobody@example.com', otp: '123456', newPassword: 'newSecurePass1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('OTP_INVALID');
+  });
+
+  it('AUTH-IT-28: returns 400 OTP_EXPIRED for an expired OTP', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    const user = await getTestPrisma().user.findUnique({ where: { email: VALID_USER.email } });
+    await getTestPrisma().passwordResetOTP.create({
+      data: { userId: user!.id, code: '999999', expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const res = await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp: '999999', newPassword: 'newSecurePass1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('OTP_EXPIRED');
+  });
+
+  it('AUTH-IT-29: returns 400 OTP_USED when the same OTP is submitted twice', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    const otp = await triggerForgotPassword(VALID_USER.email);
+
+    await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp, newPassword: 'newSecurePass1' });
+
+    const res = await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp, newPassword: 'anotherNewPass1' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('OTP_USED');
+  });
+
+  it('AUTH-IT-30: all active refresh tokens are revoked after a successful reset', async () => {
+    const { cookie } = await registerAndGetTokens();
+    const otp = await triggerForgotPassword(VALID_USER.email);
+
+    await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp, newPassword: 'newSecurePass1' });
+
+    const res = await request(app).post(`${BASE}/refresh`).set('Cookie', cookie);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('REFRESH_TOKEN_INVALID');
+  });
+
+  it('AUTH-IT-31: old password rejected and new password accepted after reset', async () => {
+    await request(app).post(`${BASE}/register`).send(VALID_USER);
+    const otp = await triggerForgotPassword(VALID_USER.email);
+    const newPassword = 'newSecurePass1';
+
+    await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: VALID_USER.email, otp, newPassword });
+
+    const oldPwRes = await request(app)
+      .post(`${BASE}/login`)
+      .send({ email: VALID_USER.email, password: VALID_USER.password });
+    expect(oldPwRes.status).toBe(401);
+
+    const newPwRes = await request(app)
+      .post(`${BASE}/login`)
+      .send({ email: VALID_USER.email, password: newPassword });
+    expect(newPwRes.status).toBe(200);
+    expect(newPwRes.body).toHaveProperty('accessToken');
+  });
+
+  it('AUTH-IT-32: returns 400 VALIDATION_ERROR for invalid request body', async () => {
+    const res = await request(app)
+      .post(`${BASE}/reset-password`)
+      .send({ email: 'not-an-email', otp: '12345', newPassword: 'short' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 });
 
