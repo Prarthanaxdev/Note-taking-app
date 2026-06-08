@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useAuthStore } from '../authStore.js';
 
 beforeEach(() => {
-  useAuthStore.setState({ accessToken: null, user: null });
+  useAuthStore.setState({ accessToken: null, user: null, isBootstrapping: true });
 });
 
 describe('authStore', () => {
@@ -27,5 +27,14 @@ describe('authStore', () => {
   it('setUser updates user profile', () => {
     useAuthStore.getState().setUser({ id: 'u1', email: 'user@example.com' });
     expect(useAuthStore.getState().user).toEqual({ id: 'u1', email: 'user@example.com' });
+  });
+
+  it('AUTH-STORE-01: initial isBootstrapping is true', () => {
+    expect(useAuthStore.getState().isBootstrapping).toBe(true);
+  });
+
+  it('AUTH-STORE-02: setBootstrappingDone sets isBootstrapping to false', () => {
+    useAuthStore.getState().setBootstrappingDone();
+    expect(useAuthStore.getState().isBootstrapping).toBe(false);
   });
 });
