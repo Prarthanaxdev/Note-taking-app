@@ -2,10 +2,13 @@ import type { ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore.js';
 import { useTokenRefresh } from './hooks/useTokenRefresh.js';
+import { AppShell } from './components/layout/AppShell.js';
 import LoginPage from './pages/auth/LoginPage.js';
 import RegisterPage from './pages/auth/RegisterPage.js';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.js';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage.js';
+import { NotesListPage } from './pages/notes/NotesListPage.js';
+import { NoteEditorPage } from './pages/notes/NoteEditorPage.js';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { accessToken, isBootstrapping } = useAuthStore();
@@ -68,7 +71,9 @@ export default function App() {
         path="/notes"
         element={
           <RequireAuth>
-            <div>TODO: NotesListPage</div>
+            <AppShell>
+              <NotesListPage />
+            </AppShell>
           </RequireAuth>
         }
       />
@@ -76,7 +81,9 @@ export default function App() {
         path="/notes/:id"
         element={
           <RequireAuth>
-            <div>TODO: NoteEditorPage</div>
+            <AppShell>
+              <NoteEditorPage />
+            </AppShell>
           </RequireAuth>
         }
       />
@@ -84,7 +91,9 @@ export default function App() {
         path="/search"
         element={
           <RequireAuth>
-            <div>TODO: SearchPage</div>
+            <AppShell>
+              <div>TODO: SearchPage</div>
+            </AppShell>
           </RequireAuth>
         }
       />
