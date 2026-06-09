@@ -1,11 +1,8 @@
-# search-entry Spec — AB-1013
+# search-entry Specification
 
 ## Purpose
-Define the search bar added to the `NotesListPage` header (FRS-FE-24). It is a lightweight
-entry point that navigates to the dedicated SearchPage — it does NOT call the search API itself.
-
+TBD - created by archiving change ab-1013. Update Purpose after archive.
 ## Requirements
-
 ### Requirement: Search bar in NotesListPage header
 
 The `NotesListPage` header row SHALL include a search input with a `Search` icon. The input is
@@ -32,3 +29,4 @@ If the input is empty or whitespace-only, no navigation occurs.
 - **WHEN** the user types in the search bar (without submitting)
 - **THEN** the notes list below is unchanged
 - **AND** the existing sort/filter controls continue to work independently
+

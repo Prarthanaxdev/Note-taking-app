@@ -1,11 +1,8 @@
-# search-results Spec — AB-1013
+# search-results Specification
 
 ## Purpose
-Define the behaviour of `SearchPage` at `/search`: URL-driven query state, result rendering
-with `<mark>` highlighting, loading skeleton, empty state, and full pagination.
-
+TBD - created by archiving change ab-1013. Update Purpose after archive.
 ## Requirements
-
 ### Requirement: Search page reads query from URL params
 
 `SearchPage` SHALL derive the active search query from the `q` URL parameter
@@ -99,3 +96,4 @@ number SHALL live in the `page` URL param; changing pages SHALL update the URL a
 #### Scenario: Changing query resets page to 1
 - **WHEN** the user submits a new search query
 - **THEN** the `page` URL param resets to 1 regardless of the previous page
+
