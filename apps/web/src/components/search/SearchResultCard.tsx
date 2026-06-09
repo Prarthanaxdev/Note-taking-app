@@ -15,7 +15,7 @@ export function SearchResultCard({ result }: SearchResultCardProps) {
       tabIndex={0}
       onClick={() => navigate(`/notes/${result.id}`)}
       onKeyDown={(e) => e.key === 'Enter' && navigate(`/notes/${result.id}`)}
-      className="flex cursor-pointer flex-col gap-1 rounded-lg border bg-white p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className="flex cursor-pointer flex-col gap-1 rounded-lg border bg-white p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <h3 className="line-clamp-1 font-semibold text-gray-900">
         {result.title || 'Untitled'}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, SearchX } from 'lucide-react';
 import { useSearch } from '../../hooks/useSearch.js';
 import { SearchResultCard } from '../../components/search/SearchResultCard.js';
 import { Pagination } from '../../components/notes/Pagination.js';
@@ -18,9 +18,12 @@ function SearchSkeleton() {
 
 function SearchEmpty({ query }: { query: string }) {
   return (
-    <div className="py-12 text-center text-gray-500">
-      <p className="text-sm">
-        No notes found for <strong>&ldquo;{query}&rdquo;</strong>.
+    <div className="flex flex-col items-center py-16 text-center text-muted-foreground">
+      <SearchX className="mb-3 h-10 w-10 opacity-30" />
+      <p className="font-medium">No notes found</p>
+      <p className="mt-1 text-sm">
+        No results for{' '}
+        <strong className="text-foreground">&ldquo;{query}&rdquo;</strong>.
       </p>
     </div>
   );
@@ -63,7 +66,7 @@ export function SearchPage() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Search notes…"
-            className="w-full rounded-md border bg-white py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-md border bg-white py-2 pl-9 pr-4 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             aria-label="Search notes"
           />
         </div>

@@ -64,7 +64,7 @@ export function ShareModal({ noteId, open, onOpenChange }: ShareModalProps) {
               min={minDate}
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
-              className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-md border px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
           <Button type="submit" disabled={createLink.isPending}>

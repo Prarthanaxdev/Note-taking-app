@@ -7,7 +7,7 @@
 | Version | 1.0 — DRAFT |
 | Date | June 4, 2026 |
 | Status | Under Review |
-| Project Ref | AB-1001 – AB-1016 |
+| Project Ref | AB-1001 – AB-1017 |
 
 ---
 
@@ -465,6 +465,17 @@ This FRS covers all authenticated user actions and anonymous public-link access 
 | FRS-FE-35 | A "Restore this version" button in the preview triggers UC-VER-02 after a confirmation dialog. | [M] |
 | FRS-FE-36 | The current (latest) version is labeled "Current" and cannot be restored (no restore button shown). | [S] |
 
+### 9.7 UI Polish and Visual Design (AB-1017)
+
+| ID | Requirement | Priority |
+|---|---|---|
+| FRS-FE-37 | The app shall use a consistent professional color palette for backgrounds, navigation, buttons, tags, focus rings, and status indicators. | [M] |
+| FRS-FE-38 | All modal, dialog, drawer, popover, dropdown, and toast surfaces shall render with opaque white backgrounds and readable foreground text. | [M] |
+| FRS-FE-39 | Main pages shall use a non-transparent background color or subtle gradient so content cards and editor surfaces are visually separated. | [M] |
+| FRS-FE-40 | The TipTap editor shall be styled as a clear writing surface with toolbar grouping, visible active formatting states, comfortable spacing, and accessible contrast. | [M] |
+| FRS-FE-41 | Forms, note cards, empty states, search results, and share/version panels shall use consistent border radius, shadow, spacing, and hover/focus states. | [S] |
+| FRS-FE-42 | UI polish shall not change API response shapes, auth token storage, autosave behavior, or existing user journey flows. | [M] |
+
 ---
 
 ## 10. Error Code Catalog
@@ -528,6 +539,8 @@ Each criterion must have a corresponding named test in the test suite. The test 
 | FRS-FE-18 | Autosave fires exactly 2s after last keystroke | E2E |
 | FRS-FE-19 | Saving/Saved/Error states visible during autosave lifecycle | E2E |
 | FRS-FE-31 | Copy URL toast shown on clipboard copy | E2E |
+| FRS-FE-38 | Modal/dialog/drawer/popover/toast surfaces render opaque white backgrounds with readable text | Component |
+| FRS-FE-40 | Editor toolbar and writing surface show active formatting states and accessible contrast | Component |
 
 ---
 

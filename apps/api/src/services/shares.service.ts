@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { ShareLink } from 'shared';
+import type { PublicNote, ShareLink } from 'shared';
 import { CreateShareSchema } from 'shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
@@ -79,7 +79,7 @@ export async function revokeShareLink(
 
 export async function getPublicNote(
   token: string,
-): Promise<{ title: string; content: object | null }> {
+): Promise<PublicNote> {
   const link = await prisma.shareLink.findUnique({
     where: { token },
     include: { note: true },

@@ -7,7 +7,7 @@
 | Version | 1.0 — DRAFT |
 | Date | June 4, 2026 |
 | Status | Under Review |
-| Project Ref | AB-1001 – AB-1016 |
+| Project Ref | AB-1001 – AB-1017 |
 
 ---
 
@@ -840,3 +840,4 @@ if (!note) throw new AppError('NOT_FOUND', 'Not found.', 404);
 | AB-1014 | `ShareModal` (full), `ShareLinkRow`, `useShares` hook | Generate link, optional expiry picker, copy URL to clipboard, revoke with confirm. |
 | AB-1015 | `VersionDrawer` (full), `VersionPreview`, `useVersions` hook | List versions. Preview in read-only TipTap. Restore with confirm. Current version label. |
 | AB-1016 | `e2e/` directory with Playwright tests | 7 user journey tests (see FRS §11). Each journey starts from unauthenticated state. Uses page objects pattern. |
+| AB-1017 | `apps/web/src/index.css`, `AppShell`, auth pages, notes pages, `NoteEditor`, `EditorToolbar`, `ShareModal`, `VersionDrawer`, dialog/toast components | UI polish pass. Add professional color palette, non-transparent app background, white modal/dialog surfaces, improved editor card styling, readable text contrast, consistent spacing, hover/focus states, and responsive layout checks. |

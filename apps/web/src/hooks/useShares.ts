@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ShareLink } from 'shared';
+import type { PublicNote, ShareLink } from 'shared';
 import { apiClient } from '../lib/apiClient.js';
 
 export function useShareLinks(noteId: string) {
@@ -23,5 +23,14 @@ export function useRevokeShareLink(noteId: string) {
   return useMutation<void, unknown, string>({
     mutationFn: (shareId) => apiClient.delete(`/shares/${shareId}`).then(() => undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shares', noteId] }),
+  });
+}
+
+export function usePublicNote(token: string | undefined) {
+  return useQuery<PublicNote>({
+    queryKey: ['public-note', token],
+    enabled: Boolean(token),
+    retry: false,
+    queryFn: () => apiClient.get<PublicNote>(`/public/notes/${token}`).then((r) => r.data),
   });
 }

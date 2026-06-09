@@ -2,16 +2,34 @@ import { useEffect, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
-import { useUpdateNote } from '../../hooks/useNotes.js';
+import { useCreateNote, useUpdateNote } from '../../hooks/useNotes.js';
 import { EditorToolbar } from './EditorToolbar.js';
 import type { SaveStatus } from './SaveStatusIndicator.js';
 
 interface NoteEditorProps {
-  noteId: string;
+  noteId?: string;
   initialContent: object | null;
   title: string;
   tagIds: string[];
   onStatusChange: (s: SaveStatus) => void;
+  onCreated?: (noteId: string) => void;
+}
+
+function serializeContent(content: object | null) {
+  return JSON.stringify(content ?? null);
+}
+
+function extractText(node: unknown): string {
+  if (!node || typeof node !== 'object') return '';
+  const current = node as Record<string, unknown>;
+  if (current.type === 'text' && typeof current.text === 'string') return current.text;
+  if (!Array.isArray(current.content)) return '';
+  return current.content.map(extractText).join(' ');
+}
+
+function hasUserText(title: string, contentText: string) {
+  const trimmedTitle = title.trim();
+  return (trimmedTitle.length > 0 && trimmedTitle !== 'Untitled') || contentText.trim().length > 0;
 }
 
 export function NoteEditor({
@@ -20,26 +38,34 @@ export function NoteEditor({
   title,
   tagIds,
   onStatusChange,
+  onCreated,
 }: NoteEditorProps) {
+  const { mutate: createNote } = useCreateNote();
   const { mutate: updateNote } = useUpdateNote();
 
   const [contentSnapshot, setContentSnapshot] = useState(
-    () => JSON.stringify(initialContent ?? {})
+    () => serializeContent(initialContent)
+  );
+  const [contentTextSnapshot, setContentTextSnapshot] = useState(
+    () => extractText(initialContent).trim()
   );
 
   const editor = useEditor({
     extensions: [StarterKit, Underline],
     content: initialContent ?? '',
-    onUpdate: ({ editor: e }) => setContentSnapshot(JSON.stringify(e.getJSON())),
+    onUpdate: ({ editor: e }) => {
+      setContentSnapshot(JSON.stringify(e.getJSON()));
+      setContentTextSnapshot(e.getText().trim());
+    },
     editorProps: {
       attributes: {
-        class: 'prose max-w-none focus:outline-none min-h-full p-4',
+        class: 'prose max-w-none focus:outline-none min-h-full p-4 prose-headings:text-foreground',
       },
     },
   });
 
   const savedTitleRef = useRef(title);
-  const savedContentRef = useRef(JSON.stringify(initialContent));
+  const savedContentRef = useRef(serializeContent(initialContent));
   const savedTagIdsRef = useRef(tagIds.slice().sort().join(','));
 
   const isDirty =
@@ -51,37 +77,43 @@ export function NoteEditor({
 
   useEffect(() => {
     if (!isDirty) return;
+    if (!hasUserText(title, contentTextSnapshot)) return;
 
     const timer = setTimeout(() => {
       onStatusChange('saving');
       setHasError(false);
 
-      updateNote(
-        {
-          id: noteId,
-          title,
-          content: editor?.getJSON() ?? null,
-          tagIds,
+      const payload = {
+        title: title.trim() || 'Untitled',
+        content: editor?.getJSON() ?? null,
+        tagIds,
+      };
+
+      const callbacks = {
+        onSuccess: (note: { id: string; title: string; content: object | null; tags: { id: string }[] }) => {
+          savedTitleRef.current = note.title;
+          savedContentRef.current = serializeContent(note.content);
+          savedTagIdsRef.current = note.tags.map((t) => t.id).sort().join(',');
+          onStatusChange('saved');
+          setHasError(false);
+          if (!noteId) onCreated?.(note.id);
         },
-        {
-          onSuccess: (note) => {
-            savedTitleRef.current = note.title;
-            savedContentRef.current = JSON.stringify(note.content);
-            savedTagIdsRef.current = note.tags.map((t) => t.id).sort().join(',');
-            onStatusChange('saved');
-            setHasError(false);
-          },
-          onError: () => {
-            onStatusChange('error');
-            setHasError(true);
-          },
-        }
-      );
+        onError: () => {
+          onStatusChange('error');
+          setHasError(true);
+        },
+      };
+
+      if (noteId) {
+        updateNote({ id: noteId, ...payload }, callbacks);
+      } else {
+        createNote(payload, callbacks);
+      }
     }, 2000);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, contentSnapshot, tagIds.join(',')]);
+  }, [title, contentSnapshot, contentTextSnapshot, tagIds.join(',')]);
 
   useEffect(() => {
     if (!hasError) return;

@@ -40,7 +40,7 @@ export function useNote(id: string) {
 export function useCreateNote() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { title: string }) =>
+    mutationFn: (data: { title: string; content?: object | null; tagIds?: string[] }) =>
       apiClient.post<NoteDetail>('/notes', data).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notes'] }),
   });

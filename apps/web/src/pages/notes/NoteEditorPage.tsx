@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import { Share2, History } from 'lucide-react';
 import { useNote } from '../../hooks/useNotes.js';
 import { NoteEditor } from '../../components/editor/NoteEditor.js';
@@ -12,7 +12,7 @@ import { Button } from '../../components/ui/button.js';
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col h-full animate-pulse">
+    <div className="flex flex-col h-full rounded-xl border bg-white shadow-sm overflow-hidden animate-pulse">
       <div className="flex items-center gap-3 border-b px-4 py-2">
         <div className="flex-1 h-7 rounded bg-gray-200" />
         <div className="h-5 w-16 rounded bg-gray-100" />
@@ -60,36 +60,71 @@ export function NoteEditorPage() {
   );
 }
 
+export function DraftNoteEditorPage() {
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [title, setTitle] = useState('');
+
+  return (
+    <NoteEditorPageInner
+      title={title}
+      setTitle={setTitle}
+      initialContent={null}
+      tagIds={tagIds}
+      setTagIds={setTagIds}
+      status={status}
+      setStatus={setStatus}
+      onCreated={(noteId) => navigate(`/notes/${noteId}`, { replace: true })}
+    />
+  );
+}
+
 interface InnerProps {
-  noteId: string;
-  initialTitle: string;
+  noteId?: string;
+  title?: string;
+  setTitle?: (value: string) => void;
+  initialTitle?: string;
   initialContent: object | null;
-  initialTagIds: string[];
+  tagIds?: string[];
+  setTagIds?: (value: string[]) => void;
+  initialTagIds?: string[];
   status: SaveStatus;
   setStatus: (s: SaveStatus) => void;
-  shareOpen: boolean;
-  setShareOpen: (v: boolean) => void;
-  historyOpen: boolean;
-  setHistoryOpen: (v: boolean) => void;
+  shareOpen?: boolean;
+  setShareOpen?: (v: boolean) => void;
+  historyOpen?: boolean;
+  setHistoryOpen?: (v: boolean) => void;
+  onCreated?: (noteId: string) => void;
 }
 
 function NoteEditorPageInner({
   noteId,
+  title: controlledTitle,
+  setTitle: setControlledTitle,
   initialTitle,
   initialContent,
+  tagIds: controlledTagIds,
+  setTagIds: setControlledTagIds,
   initialTagIds,
   status,
   setStatus,
-  shareOpen,
+  shareOpen = false,
   setShareOpen,
-  historyOpen,
+  historyOpen = false,
   setHistoryOpen,
+  onCreated,
 }: InnerProps) {
-  const [title, setTitle] = useState(initialTitle);
-  const [tagIds, setTagIds] = useState<string[]>(initialTagIds);
+  const [uncontrolledTitle, setUncontrolledTitle] = useState(initialTitle ?? '');
+  const [uncontrolledTagIds, setUncontrolledTagIds] = useState<string[]>(initialTagIds ?? []);
+  const title = controlledTitle ?? uncontrolledTitle;
+  const setTitle = setControlledTitle ?? setUncontrolledTitle;
+  const tagIds = controlledTagIds ?? uncontrolledTagIds;
+  const setTagIds = setControlledTagIds ?? setUncontrolledTagIds;
+  const isPersisted = Boolean(noteId);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full rounded-xl border bg-white shadow-sm overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2 shrink-0">
         <input
           value={title}
@@ -100,14 +135,18 @@ function NoteEditorPageInner({
         />
         <SaveStatusIndicator status={status} onRetry={() => setStatus('idle')} />
         <TagCombobox selectedTagIds={tagIds} onChange={setTagIds} />
-        <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} className="gap-1.5">
-          <Share2 className="h-3.5 w-3.5" />
-          Share
-        </Button>
-        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="gap-1.5">
-          <History className="h-3.5 w-3.5" />
-          History
-        </Button>
+        {isPersisted && setShareOpen && (
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} className="gap-1.5">
+            <Share2 className="h-3.5 w-3.5" />
+            Share
+          </Button>
+        )}
+        {isPersisted && setHistoryOpen && (
+          <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="gap-1.5">
+            <History className="h-3.5 w-3.5" />
+            History
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -117,11 +156,16 @@ function NoteEditorPageInner({
           title={title}
           tagIds={tagIds}
           onStatusChange={setStatus}
+          onCreated={onCreated}
         />
       </div>
 
-      <ShareModal noteId={noteId} open={shareOpen} onOpenChange={setShareOpen} />
-      <VersionDrawer noteId={noteId} open={historyOpen} onOpenChange={setHistoryOpen} />
+      {noteId && setShareOpen && (
+        <ShareModal noteId={noteId} open={shareOpen} onOpenChange={setShareOpen} />
+      )}
+      {noteId && setHistoryOpen && (
+        <VersionDrawer noteId={noteId} open={historyOpen} onOpenChange={setHistoryOpen} />
+      )}
     </div>
   );
 }
