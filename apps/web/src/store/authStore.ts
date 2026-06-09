@@ -4,15 +4,19 @@ import type { UserProfile } from 'shared';
 interface AuthState {
   accessToken: string | null;
   user: UserProfile | null;
+  isBootstrapping: boolean;
   setAccessToken: (token: string) => void;
   setUser: (user: UserProfile) => void;
   clearAuth: () => void;
+  setBootstrappingDone: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   user: null,
+  isBootstrapping: true,
   setAccessToken: (token) => set({ accessToken: token }),
   setUser: (user) => set({ user }),
   clearAuth: () => set({ accessToken: null, user: null }),
+  setBootstrappingDone: () => set({ isBootstrapping: false }),
 }));
