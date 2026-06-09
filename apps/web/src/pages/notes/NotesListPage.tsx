@@ -1,4 +1,6 @@
-import { useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import type { SortBy, SortOrder } from '../../hooks/useNotes.js';
 import { useNotes } from '../../hooks/useNotes.js';
 import { useTags } from '../../hooks/useTags.js';
@@ -16,6 +18,8 @@ function parseTagIds(raw: string | null): string[] {
 }
 
 export function NotesListPage() {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
   const [params, setParams] = useSearchParams();
 
   const page = Math.max(1, Number(params.get('page') ?? 1));
@@ -66,6 +70,13 @@ export function NotesListPage() {
     setParam('page', String(newPage));
   }
 
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
+  }
+
   const notes = data?.data ?? [];
   const meta = data?.meta;
 
@@ -80,14 +91,26 @@ export function NotesListPage() {
       </aside>
 
       <div className="flex flex-1 flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">My Notes</h1>
-          <SortControl
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSortByChange={handleSortByChange}
-            onSortOrderChange={handleSortOrderChange}
-          />
+        <div className="flex items-center gap-3">
+          <h1 className="shrink-0 text-xl font-bold text-gray-900">My Notes</h1>
+          <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search notes…"
+              className="w-full rounded-md border bg-white py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Search notes"
+            />
+          </form>
+          <div className="ml-auto">
+            <SortControl
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortByChange={handleSortByChange}
+              onSortOrderChange={handleSortOrderChange}
+            />
+          </div>
         </div>
 
         <Separator />
