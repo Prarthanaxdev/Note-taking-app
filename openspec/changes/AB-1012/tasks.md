@@ -4,7 +4,7 @@
 |---|---|
 | Ticket | AB-1012 |
 | Total tasks | 14 |
-| Status | Not started |
+| Status | Complete |
 
 ---
 
@@ -34,7 +34,7 @@ run before the merge since they do not depend on AppShell.
     `popover.tsx`, `command.tsx`, `separator.tsx`
   - Run `pnpm --filter web build` to confirm 0 type errors
 
-- [ ] **T-02 — Create `apps/web/src/hooks/useNotes.ts`** [PARALLEL]
+- [x] **T-02 — Create `apps/web/src/hooks/useNotes.ts`** [PARALLEL]
   - Exports (all from this single file):
     ```typescript
     export type SortBy = 'createdAt' | 'updatedAt' | 'title';
@@ -52,7 +52,7 @@ run before the merge since they do not depend on AppShell.
   - `useCreateNote.onSuccess` + `useDeleteNote.onSuccess`: `qc.invalidateQueries({ queryKey: ['notes'] })`
   - All return types: `NoteListItem`, `NoteDetail`, `PaginationMeta`, `TagSummary` from `'shared'`
 
-- [ ] **T-03 — Create `apps/web/src/hooks/useTags.ts`** [PARALLEL]
+- [x] **T-03 — Create `apps/web/src/hooks/useTags.ts`** [PARALLEL]
   - Exports:
     ```typescript
     export function useTags()       // GET /tags — queryKey: ['tags'] — returns TagWithCount[]
@@ -74,7 +74,7 @@ pnpm --filter web build   # 0 type errors
 >
 > Checkpoint: `pnpm --filter web lint` → 0 errors, `pnpm --filter web build` → 0 type errors.
 
-- [ ] **T-04 — Create `apps/web/src/components/editor/SaveStatusIndicator.tsx`** [PARALLEL]
+- [x] **T-04 — Create `apps/web/src/components/editor/SaveStatusIndicator.tsx`** [PARALLEL]
   - Export `SaveStatus` type: `'idle' | 'saving' | 'saved' | 'error'`
   - Props: `{ status: SaveStatus; onRetry: () => void }`
   - Render:
@@ -84,7 +84,7 @@ pnpm --filter web build   # 0 type errors
     - `'error'` → `<AlertCircle />` + "Error saving" text (red) + `<Button size="sm" onClick={onRetry}>Retry</Button>`
   - Icons from `lucide-react`: `Loader2`, `Check`, `AlertCircle`
 
-- [ ] **T-05 — Create `apps/web/src/components/editor/EditorToolbar.tsx`** [PARALLEL, depends on T-01]
+- [x] **T-05 — Create `apps/web/src/components/editor/EditorToolbar.tsx`** [PARALLEL, depends on T-01]
   - Props: `{ editor: Editor | null }` — `Editor` imported from `@tiptap/react`
   - Returns `null` when `editor` is null
   - Render a flex row of icon buttons. For each:
@@ -106,7 +106,7 @@ pnpm --filter web build   # 0 type errors
     | Code block | `toggleCodeBlock()` | `isActive('codeBlock')` |
   - Use `<Separator orientation="vertical" />` to group (Bold/Italic/Underline | Headings | Lists | Block)
 
-- [ ] **T-06 — Create `apps/web/src/components/editor/NoteEditor.tsx`** [PARALLEL, depends on T-01, T-02, T-04, T-05]
+- [x] **T-06 — Create `apps/web/src/components/editor/NoteEditor.tsx`** [PARALLEL, depends on T-01, T-02, T-04, T-05]
   - Props:
     ```typescript
     interface NoteEditorProps {
@@ -174,7 +174,7 @@ pnpm --filter web build   # 0 type errors
     does NOT render `SaveStatusIndicator` directly. The retry logic: `NoteEditorPage` calls
     `updateNote` imperatively via a callback.
 
-- [ ] **T-07 — Create `apps/web/src/components/tags/TagCombobox.tsx`** [PARALLEL, depends on T-01, T-03]
+- [x] **T-07 — Create `apps/web/src/components/tags/TagCombobox.tsx`** [PARALLEL, depends on T-01, T-03]
   - Props: `{ selectedTagIds: string[]; onChange: (ids: string[]) => void }`
   - Internal state: `open: boolean`, `search: string`
   - Data: `const { data: allTags = [] } = useTags()`
@@ -190,7 +190,7 @@ pnpm --filter web build   # 0 type errors
     `<CommandList>`, `<CommandEmpty>`, `<CommandGroup>`, `<CommandItem>`
   - "No tags yet" shown via `<CommandEmpty>` when `allTags.length === 0` and no search
 
-- [ ] **T-08 — Create `apps/web/src/components/share/ShareModal.tsx`** [PARALLEL, depends on T-01]
+- [x] **T-08 — Create `apps/web/src/components/share/ShareModal.tsx`** [PARALLEL, depends on T-01]
   - Props: `{ noteId: string; open: boolean; onOpenChange: (open: boolean) => void }`
   - Render a shadcn `<Dialog>`:
     ```tsx
@@ -204,7 +204,7 @@ pnpm --filter web build   # 0 type errors
     </Dialog>
     ```
 
-- [ ] **T-09 — Create `apps/web/src/components/versions/VersionDrawer.tsx`** [PARALLEL, depends on T-01]
+- [x] **T-09 — Create `apps/web/src/components/versions/VersionDrawer.tsx`** [PARALLEL, depends on T-01]
   - Props: `{ noteId: string; open: boolean; onOpenChange: (open: boolean) => void }`
   - Render a shadcn `<Sheet side="right">`:
     ```tsx
@@ -232,7 +232,7 @@ pnpm --filter web build   # 0 type errors
 >
 > Checkpoint: `pnpm -r lint` + `pnpm -r build` → 0 errors across all packages.
 
-- [ ] **T-10 — Create `apps/web/src/pages/notes/NoteEditorPage.tsx`** (depends on T-04 – T-09)
+- [x] **T-10 — Create `apps/web/src/pages/notes/NoteEditorPage.tsx`** (depends on T-04 – T-09)
   - Reads `const { id } = useParams<{ id: string }>()`
   - Fetches: `const { data: note, isLoading, isError } = useNote(id!)`
   - Redirect on 404: `if (isError) return <Navigate to="/notes" replace />`
@@ -291,7 +291,7 @@ pnpm --filter web build   # 0 type errors
     </div>
     ```
 
-- [ ] **T-11 — Update `apps/web/src/App.tsx`** (depends on AppShell from AB-1011 pre-condition)
+- [x] **T-11 — Update `apps/web/src/App.tsx`** (depends on AppShell from AB-1011 pre-condition)
   - Add imports: `AppShell`, `NoteEditorPage` (and `NotesListPage` if AB-1011 is merged)
   - Replace `/notes/:id` route:
     ```tsx
@@ -319,7 +319,7 @@ pnpm -r build   # all packages — 0 type errors
 >
 > Checkpoint: `pnpm --filter web test` → all tests pass.
 
-- [ ] **T-12 — Create `apps/web/src/hooks/__tests__/useNotes.test.ts`** [PARALLEL]
+- [x] **T-12 — Create `apps/web/src/hooks/__tests__/useNotes.test.ts`** [PARALLEL]
   - Mock: `apiClient.get`, `apiClient.post`, `apiClient.patch`, `apiClient.delete`
   - **NOTE-HOOK-01**: `useNotes` — `mockGet` returns `{ data: { data: [mockNote], meta: mockMeta } }`;
     assert `result.current.data.data` has length 1 and `mockGet` was called with `('/notes', { params })`
@@ -333,7 +333,7 @@ pnpm -r build   # all packages — 0 type errors
   - **NOTE-HOOK-05**: `useDeleteNote` — `mockDelete` returns `{}`;
     `mutate('note-1')`; assert `mockDelete` called with `'/notes/note-1'`
 
-- [ ] **T-13 — Create `apps/web/src/hooks/__tests__/useTags.test.ts`** [PARALLEL]
+- [x] **T-13 — Create `apps/web/src/hooks/__tests__/useTags.test.ts`** [PARALLEL]
   - Mock: `apiClient.get`, `apiClient.post`
   - **TAG-HOOK-01**: `useTags` — `mockGet` returns `{ data: [{ id: 't1', name: 'Work', color: null, noteCount: 3 }] }`;
     assert `result.current.data` has length 1 and `mockGet` called with `'/tags'`
@@ -352,7 +352,7 @@ pnpm --filter web test   # 17 existing + 8 new = 25 tests passing
 
 ## Phase 5 — Final Quality Gates
 
-- [ ] **T-14 — All quality gates pass**
+- [x] **T-14 — All quality gates pass**
   ```bash
   pnpm -r lint           # 1. Lint — all packages clean
   pnpm -r build          # 2. Type-check + build — 0 errors
