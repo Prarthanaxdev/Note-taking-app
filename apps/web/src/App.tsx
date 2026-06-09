@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { useAuthStore } from './store/authStore.js';
 import { useTokenRefresh } from './hooks/useTokenRefresh.js';
 import { AppShell } from './components/layout/AppShell.js';
@@ -8,8 +9,9 @@ import RegisterPage from './pages/auth/RegisterPage.js';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.js';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage.js';
 import { NotesListPage } from './pages/notes/NotesListPage.js';
-import { NoteEditorPage } from './pages/notes/NoteEditorPage.js';
+import { DraftNoteEditorPage, NoteEditorPage } from './pages/notes/NoteEditorPage.js';
 import { SearchPage } from './pages/search/SearchPage.js';
+import { PublicNotePage } from './pages/public/PublicNotePage.js';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { accessToken, isBootstrapping } = useAuthStore();
@@ -34,6 +36,8 @@ export default function App() {
   useTokenRefresh();
 
   return (
+    <>
+    <Toaster position="bottom-right" richColors />
     <Routes>
       <Route path="/" element={<Navigate to="/notes" replace />} />
       <Route
@@ -79,6 +83,16 @@ export default function App() {
         }
       />
       <Route
+        path="/notes/new"
+        element={
+          <RequireAuth>
+            <AppShell>
+              <DraftNoteEditorPage />
+            </AppShell>
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/notes/:id"
         element={
           <RequireAuth>
@@ -98,8 +112,9 @@ export default function App() {
           </RequireAuth>
         }
       />
-      <Route path="/public/:token" element={<div>TODO: PublicNotePage</div>} />
+      <Route path="/public/:token" element={<PublicNotePage />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </>
   );
 }

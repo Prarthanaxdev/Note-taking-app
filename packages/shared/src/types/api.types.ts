@@ -49,6 +49,11 @@ export type ShareLink = {
   createdAt: string;
 };
 
+export type PublicNote = {
+  title: string;
+  content: object | null;
+};
+
 export type VersionListItem = {
   id: string;
   savedAt: string;

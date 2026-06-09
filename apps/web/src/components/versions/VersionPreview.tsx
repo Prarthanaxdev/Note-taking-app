@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -64,6 +65,7 @@ export function VersionPreview({
   function handleRestore() {
     restoreVersion.mutate(versionId, {
       onSuccess: () => {
+        toast.success('Version restored');
         setRestoreOpen(false);
         onRestored();
       },
@@ -75,7 +77,7 @@ export function VersionPreview({
       <div className="flex items-center gap-2 px-4 py-2 border-b">
         <button
           onClick={onBack}
-          className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          className="text-sm text-primary hover:text-primary/80 font-medium"
         >
           ← Back
         </button>

@@ -40,7 +40,7 @@ export function NoteCard({ note }: NoteCardProps) {
         tabIndex={0}
         onClick={() => navigate(`/notes/${note.id}`)}
         onKeyDown={(e) => e.key === 'Enter' && navigate(`/notes/${note.id}`)}
-        className="group relative flex cursor-pointer flex-col gap-2 rounded-lg border bg-white p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="group relative flex cursor-pointer flex-col gap-2 rounded-lg border bg-white p-4 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <div className="flex items-start justify-between gap-2">
           <h3 className="line-clamp-1 flex-1 font-semibold text-gray-900">

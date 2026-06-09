@@ -19,7 +19,14 @@ export function validate(schema: ZodTypeAny, target: ValidateTarget = 'body') {
     if (target === 'body') {
       req.body = result.data as Record<string, unknown>;
     } else {
-      Object.assign(req.query, result.data);
+      // Express v5: req.query is a prototype getter that re-parses on every access.
+      // Shadow it with an own property so the coerced values (e.g. numbers from
+      // z.coerce.number()) are visible to route handlers instead of raw strings.
+      Object.defineProperty(req, 'query', {
+        value: result.data,
+        writable: true,
+        configurable: true,
+      });
     }
     next();
   };

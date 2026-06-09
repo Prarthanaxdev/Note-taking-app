@@ -1,0 +1,990 @@
+openapi: 3.1.0
+info:
+  title: Note Taking Application API
+  version: 1.0.0
+  description: >
+    REST API for the Note Taking Application (NTA). All protected routes require
+    a Bearer JWT access token obtained from `/auth/login` or `/auth/register`.
+    The refresh token is managed via an HttpOnly cookie.
+
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── Auth ────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [email, otp, newPassword]
+      properties:
+        email:
+          type: string
+          format: email
+        otp:
+          type: string
+          pattern: '^\d{6}$'
+          description: 6-digit numeric OTP logged to stdout
+        newPassword:
+          type: string
+          minLength: 8
+
+    AuthResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+          description: JWT, valid for 15 minutes. Store in memory only — never localStorage.
+
+    # ── Notes ───────────────────────────────────────────────────────────────
+    TagSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+          nullable: true
+          description: Hex colour string e.g. "#FF5733"
+
+    NoteListItem:
+      type: object
+      required: [id, title, contentPreview, tags, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        contentPreview:
+          type: string
+          description: First 150 characters of plain-text content
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagSummary'
+        updatedAt:
+          type: string
+          format: date-time
+
+    NoteDetail:
+      type: object
+      required: [id, title, content, tags, shareLinksCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: object
+          nullable: true
+          description: TipTap JSON document
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagSummary'
+        shareLinksCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateNoteRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          description: TipTap JSON document
+        tagIds:
+          type: array
+          items:
+            type: string
+          maxItems: 5
+
+    UpdateNoteRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          description: TipTap JSON document
+        tagIds:
+          type: array
+          items:
+            type: string
+          maxItems: 5
+
+    PaginationMeta:
+      type: object
+      required: [total, page, limit, totalPages]
+      properties:
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+
+    NoteListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/NoteListItem'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Search ──────────────────────────────────────────────────────────────
+    SearchResult:
+      type: object
+      required: [id, title, headline, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        headline:
+          type: string
+          description: >
+            PostgreSQL ts_headline output. Contains <mark> tags for matched
+            terms. Safe to render with dangerouslySetInnerHTML — server-generated only.
+        updatedAt:
+          type: string
+          format: date-time
+
+    SearchResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # ── Tags ────────────────────────────────────────────────────────────────
+    TagWithCount:
+      allOf:
+        - $ref: '#/components/schemas/TagSummary'
+        - type: object
+          required: [noteCount]
+          properties:
+            noteCount:
+              type: integer
+
+    CreateTagRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 50
+        color:
+          type: string
+          nullable: true
+          description: Hex colour string e.g. "#3b82f6"
+
+    UpdateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 50
+        color:
+          type: string
+          nullable: true
+
+    # ── Shares ──────────────────────────────────────────────────────────────
+    ShareLink:
+      type: object
+      required: [id, noteId, userId, token, expiresAt, revokedAt, viewCount, createdAt]
+      properties:
+        id:
+          type: string
+        noteId:
+          type: string
+        userId:
+          type: string
+        token:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        viewCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateShareRequest:
+      type: object
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+          description: Must be a future datetime. Omit for a permanent link.
+
+    PublicNoteResponse:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+        content:
+          type: object
+          nullable: true
+          description: TipTap JSON document
+
+    # ── Versions ────────────────────────────────────────────────────────────
+    VersionListItem:
+      type: object
+      required: [id, savedAt]
+      properties:
+        id:
+          type: string
+        savedAt:
+          type: string
+          format: date-time
+
+    VersionDetail:
+      type: object
+      required: [id, title, content, savedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        content:
+          type: object
+          nullable: true
+          description: TipTap JSON document at time of snapshot
+        savedAt:
+          type: string
+          format: date-time
+
+    # ── Errors ──────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - EMAIL_TAKEN
+                - INVALID_CREDENTIALS
+                - REFRESH_TOKEN_INVALID
+                - OTP_EXPIRED
+                - OTP_USED
+                - OTP_INVALID
+                - TITLE_REQUIRED
+                - TOO_MANY_TAGS
+                - INVALID_TAG
+                - TAG_NAME_TAKEN
+                - QUERY_REQUIRED
+                - NOT_FOUND
+                - VALIDATION_ERROR
+                - UNAUTHORIZED
+            message:
+              type: string
+            fields:
+              type: object
+              additionalProperties:
+                type: string
+              description: Per-field validation errors (VALIDATION_ERROR only)
+
+  parameters:
+    NoteId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    TagId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    ShareId:
+      name: shareId
+      in: path
+      required: true
+      schema:
+        type: string
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid Bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found or belongs to a different user
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Request body or query failed Zod validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+# ── Paths ───────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      x-ratelimit: 10 req / 15 min / IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registered. Refresh token set in HttpOnly cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email already taken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email + password
+      security: []
+      x-ratelimit: 10 req / 15 min / IP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated. Refresh token set in HttpOnly cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token and issue a new access token
+      security: []
+      description: >
+        Reads the `refreshToken` HttpOnly cookie. Atomically revokes the old
+        token and issues a new one (rotation). Returns 401 if the cookie is
+        missing, expired, or already revoked.
+      responses:
+        '200':
+          description: New access token. Rotated refresh token set in cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token and clear cookie
+      security: []
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password-reset OTP
+      security: []
+      x-ratelimit: 5 req / 15 min / IP
+      description: >
+        Always returns 200 regardless of whether the email is registered
+        (enumeration prevention). OTP is logged to stdout — no email is sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: OTP sent (or silently ignored if email not found)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password using OTP
+      security: []
+      description: >
+        Validates the 6-digit OTP and updates the password. Revokes all active
+        refresh tokens for the user on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: OTP invalid, expired, or already used
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ── Notes ──────────────────────────────────────────────────────────────────
+  /notes:
+    get:
+      tags: [Notes]
+      summary: List notes (paginated, sorted, tag-filtered)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, title]
+            default: updatedAt
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: tags
+          in: query
+          description: Comma-separated tag IDs. Returns notes that have ALL specified tags.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated note list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Notes]
+      summary: Create a new note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNoteRequest'
+      responses:
+        '201':
+          description: Created note
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notes/search:
+    get:
+      tags: [Notes]
+      summary: Full-text search across title and content
+      description: >
+        Uses PostgreSQL `plainto_tsquery` against a GIN-indexed tsvector column.
+        Returns `ts_headline` snippets with `<mark>` tags for matched terms.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Search results with headline snippets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /notes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/NoteId'
+
+    get:
+      tags: [Notes]
+      summary: Get a single note by ID
+      responses:
+        '200':
+          description: Note detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Notes]
+      summary: Update a note (partial)
+      description: >
+        Creates a version snapshot before applying the update, within a single
+        transaction. Auto-purges oldest versions if the note exceeds 50 snapshots.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNoteRequest'
+      responses:
+        '200':
+          description: Updated note
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Notes]
+      summary: Soft-delete a note
+      description: Sets `deletedAt` timestamp. Physical deletion never happens within 30 days.
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Shares (nested under notes) ────────────────────────────────────────────
+  /notes/{id}/share:
+    parameters:
+      - $ref: '#/components/parameters/NoteId'
+
+    post:
+      tags: [Shares]
+      summary: Generate a new share link for a note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShareRequest'
+      responses:
+        '201':
+          description: Created share link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareLink'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notes/{id}/shares:
+    parameters:
+      - $ref: '#/components/parameters/NoteId'
+
+    get:
+      tags: [Shares]
+      summary: List active share links for a note
+      description: >
+        Returns only links where `revokedAt IS NULL` and (`expiresAt IS NULL` OR
+        `expiresAt > now()`).
+      responses:
+        '200':
+          description: Array of active share links
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShareLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Versions (nested under notes) ──────────────────────────────────────────
+  /notes/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/NoteId'
+
+    get:
+      tags: [Versions]
+      summary: List version snapshots for a note
+      description: Returns id + savedAt only, sorted savedAt DESC. No content payloads.
+      responses:
+        '200':
+          description: Array of version summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VersionListItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notes/{id}/versions/{versionId}:
+    parameters:
+      - $ref: '#/components/parameters/NoteId'
+      - $ref: '#/components/parameters/VersionId'
+
+    get:
+      tags: [Versions]
+      summary: Get a single version snapshot (with full content)
+      responses:
+        '200':
+          description: Version detail including title and TipTap content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /notes/{id}/versions/{versionId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/NoteId'
+      - $ref: '#/components/parameters/VersionId'
+
+    post:
+      tags: [Versions]
+      summary: Restore a past version
+      description: >
+        Applies the version's title and content to the current note via a PATCH
+        (in the same transaction). This itself creates a new version snapshot
+        recording the restore event.
+      responses:
+        '200':
+          description: Updated note after restore
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Tags ───────────────────────────────────────────────────────────────────
+  /tags:
+    get:
+      tags: [Tags]
+      summary: List all tags for the authenticated user
+      responses:
+        '200':
+          description: Tags with note counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TagWithCount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Tags]
+      summary: Create a new tag
+      description: Tag names are unique per user (case-insensitive).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTagRequest'
+      responses:
+        '201':
+          description: Created tag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagSummary'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Tag name already exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /tags/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TagId'
+
+    patch:
+      tags: [Tags]
+      summary: Update a tag's name or colour
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTagRequest'
+      responses:
+        '200':
+          description: Updated tag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagSummary'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: New tag name conflicts with an existing tag
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags: [Tags]
+      summary: Delete a tag
+      description: Removes the tag and all its NoteTag join rows (cascade).
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Shares (top-level — revoke) ────────────────────────────────────────────
+  /shares/{shareId}:
+    parameters:
+      - $ref: '#/components/parameters/ShareId'
+
+    delete:
+      tags: [Shares]
+      summary: Revoke a share link
+      description: >
+        Permanently revokes the link by setting `revokedAt`. Cannot be undone
+        (BR-SHARE-07).
+      responses:
+        '204':
+          description: Revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Public (unauthenticated) ───────────────────────────────────────────────
+  /public/notes/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [Public]
+      summary: Read a publicly shared note (no auth required)
+      security: []
+      description: >
+        Validates the share link (not revoked, not expired, note not soft-deleted).
+        Atomically increments `viewCount`. Returns title and TipTap content only —
+        no tags, no user data, no version history.
+      responses:
+        '200':
+          description: Public note content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicNoteResponse'
+        '404':
+          description: Token not found, link revoked, link expired, or note deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+tags:
+  - name: Auth
+    description: Registration, login, token refresh, logout, password reset
+  - name: Notes
+    description: Note CRUD and full-text search
+  - name: Tags
+    description: Tag management
+  - name: Shares
+    description: Share link generation, listing, and revocation
+  - name: Versions
+    description: Version snapshot listing, detail, and restore
+  - name: Public
+    description: Unauthenticated public note access via share token

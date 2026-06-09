@@ -8,6 +8,9 @@ import { useAuth } from '../../hooks/useAuth.js';
 
 type ForgotPasswordFormValues = z.infer<typeof ForgotPasswordSchema>;
 
+const inputClass =
+  'rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+
 export default function ForgotPasswordPage() {
   const { forgotPassword } = useAuth();
   const [submitted, setSubmitted] = useState(false);
@@ -30,21 +33,21 @@ export default function ForgotPasswordPage() {
   return (
     <AuthLayout title="Forgot password">
       {submitted ? (
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-foreground">
           If that email is registered, you'll receive a code shortly.
         </p>
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-muted-foreground">
             Enter your email and we'll send you a reset code.
           </p>
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-gray-700">Email</label>
+            <label className="text-sm font-medium text-foreground">Email</label>
             <input
               {...register('email')}
               type="email"
               placeholder="you@example.com"
-              className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={inputClass}
             />
             {errors.email && (
               <p className="text-sm text-red-600">{errors.email.message}</p>
@@ -53,7 +56,7 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={forgotPassword.isPending}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {forgotPassword.isPending ? 'Sending…' : 'Send reset code'}
           </button>

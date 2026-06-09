@@ -79,31 +79,34 @@ export function NotesListPage() {
 
   const notes = data?.data ?? [];
   const meta = data?.meta;
+  const showTagFilter = allTags.length > 0;
 
   return (
-    <div className="flex gap-6">
-      <aside className="hidden w-52 shrink-0 lg:block">
-        <TagFilter
-          tags={allTags}
-          selectedTagIds={selectedTagIds}
-          onToggle={handleTagToggle}
-        />
-      </aside>
+    <div className="flex min-w-0 gap-4">
+      {showTagFilter && (
+        <aside className="hidden w-44 shrink-0 lg:block">
+          <TagFilter
+            tags={allTags}
+            selectedTagIds={selectedTagIds}
+            onToggle={handleTagToggle}
+          />
+        </aside>
+      )}
 
-      <div className="flex flex-1 flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <h1 className="shrink-0 text-xl font-bold text-gray-900">My Notes</h1>
-          <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-sm">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <h1 className="shrink-0 text-xl font-bold text-foreground">My Notes</h1>
+          <form onSubmit={handleSearchSubmit} className="relative w-full max-w-xl xl:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search notes…"
-              className="w-full rounded-md border bg-white py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border bg-white py-1.5 pl-9 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="Search notes"
             />
           </form>
-          <div className="ml-auto">
+          <div className="xl:ml-auto">
             <SortControl
               sortBy={sortBy}
               sortOrder={sortOrder}

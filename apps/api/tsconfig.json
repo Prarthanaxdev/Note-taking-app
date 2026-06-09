@@ -5,6 +5,7 @@
     "moduleResolution": "NodeNext",
     "target": "ES2022",
     "outDir": "dist",
+    "rootDir": "src",
     "paths": {
       "shared": ["../../packages/shared/src/index.ts"]
     }

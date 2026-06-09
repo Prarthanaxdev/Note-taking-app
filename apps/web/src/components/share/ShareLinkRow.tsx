@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import type { ShareLink } from 'shared';
 import { useRevokeShareLink } from '../../hooks/useShares.js';
 import { Button } from '../ui/button.js';
@@ -31,14 +32,21 @@ export function ShareLinkRow({ link, noteId }: ShareLinkRowProps) {
 
   function handleCopy() {
     const url = `${window.location.origin}/public/${link.token}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(url).then(() => {
+      toast.success('Link copied to clipboard');
+    });
     setCopied(true);
     clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => setCopied(false), 2000);
   }
 
   function handleRevoke() {
-    revokeLink.mutate(link.id, { onSuccess: () => setRevokeOpen(false) });
+    revokeLink.mutate(link.id, {
+      onSuccess: () => {
+        setRevokeOpen(false);
+        toast.success('Link revoked');
+      },
+    });
   }
 
   const expiry = link.expiresAt

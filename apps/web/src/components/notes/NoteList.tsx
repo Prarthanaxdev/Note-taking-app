@@ -1,3 +1,4 @@
+import { FileText } from 'lucide-react';
 import type { NoteListItem } from 'shared';
 import { NoteCard } from './NoteCard.js';
 
@@ -23,7 +24,7 @@ interface NoteListProps {
 export function NoteList({ notes, isLoading }: NoteListProps) {
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))]">
         {Array.from({ length: 6 }).map((_, i) => (
           <SkeletonCard key={i} />
         ))}
@@ -33,16 +34,16 @@ export function NoteList({ notes, isLoading }: NoteListProps) {
 
   if (notes.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-        <div className="text-4xl">📝</div>
-        <p className="text-lg font-medium text-gray-700">No notes yet</p>
-        <p className="text-sm text-gray-400">Create your first note using the button in the sidebar.</p>
+      <div className="flex flex-col items-center py-16 text-center text-muted-foreground">
+        <FileText className="mb-3 h-10 w-10 opacity-30" />
+        <p className="font-medium">No notes yet</p>
+        <p className="mt-1 text-sm">Create your first note using the button in the sidebar.</p>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(17rem,1fr))]">
       {notes.map((note) => (
         <NoteCard key={note.id} note={note} />
       ))}
