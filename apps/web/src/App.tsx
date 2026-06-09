@@ -9,6 +9,7 @@ import ForgotPasswordPage from './pages/auth/ForgotPasswordPage.js';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage.js';
 import { NotesListPage } from './pages/notes/NotesListPage.js';
 import { NoteEditorPage } from './pages/notes/NoteEditorPage.js';
+import { SearchPage } from './pages/search/SearchPage.js';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { accessToken, isBootstrapping } = useAuthStore();
@@ -92,7 +93,7 @@ export default function App() {
         element={
           <RequireAuth>
             <AppShell>
-              <div>TODO: SearchPage</div>
+              <SearchPage />
             </AppShell>
           </RequireAuth>
         }
