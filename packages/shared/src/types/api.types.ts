@@ -53,3 +53,10 @@ export type VersionListItem = {
   id: string;
   savedAt: string;
 };
+
+export type VersionDetail = {
+  id: string;
+  title: string;
+  content: object | null;
+  savedAt: string;
+};
