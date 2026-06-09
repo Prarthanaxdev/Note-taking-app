@@ -105,9 +105,8 @@ and the drawer reflects the new snapshot.
 
 ### Requirement: Drawer resets to list view on close
 
-When the drawer is closed (by the user or programmatically), the internal
-`selectedVersionId` SHALL be reset to `null` so that the next open always starts on
-the list view.
+The drawer SHALL reset `selectedVersionId` to `null` when closed (by the user or
+programmatically) so that the next open always starts on the list view.
 
 #### Scenario: Reopening the drawer after previewing a version starts at the list
 - **GIVEN** the user has navigated to the preview pane
