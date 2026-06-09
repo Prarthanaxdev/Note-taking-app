@@ -7,11 +7,19 @@ describe('SearchQuerySchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('T45-b: rejects empty query string', () => {
+  it('T45-b: accepts empty query string for service-level QUERY_REQUIRED handling', () => {
     const result = SearchQuerySchema.safeParse({ q: '' });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0].path).toContain('q');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.q).toBe('');
+    }
+  });
+
+  it('trims whitespace-only query string to empty string', () => {
+    const result = SearchQuerySchema.safeParse({ q: '   ' });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.q).toBe('');
     }
   });
 

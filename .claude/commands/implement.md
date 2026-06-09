@@ -8,10 +8,12 @@ Before writing ONE line of code, read:
 5.openspec/changes/$ARGUMENTS/proposal.md
 6.openspec/changes/$ARGUMENTS/plan.md
 7.openspec/changes/$ARGUMENTS/tasks.md
+8..claude/agents/test-writer.md (testing strategy and test-writing rules)
 
 Rules:
 -Ask [y/n] before every file write
 -After every phase: pnpm build → pnpm lint → pnpm test
+-Before writing tests, follow .claude/agents/test-writer.md
 -Write tests BEFORE or ALONGSIDE implementation
 -Never skip a failing test
 -At 60k tokens: save to session-context.md → /clear → resume
